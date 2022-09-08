@@ -231,7 +231,7 @@ class Hemisphere(Primitives):
 class Cylinder(Primitives):
     def __init__(self, program, radius, height, n, material=None):
         self.radius, self.height, self.n = radius, height, n
-        self.positions, self.indices, self.normals = self.get_vertices(radius, height, n)
+        self.positions, self.indices, self.normals = self.get_vertices()
         self.colors = get_color_by_pos(self.positions)
         self.material = material
 
@@ -347,7 +347,7 @@ class Grid(Primitives):
 class Checkerboard(Primitives):
     def __init__(self, program, width, height, m, n):
         self.width, self.height, self.m, self.n = width, height, m, n
-        self.positions, self.indices, self.normals, self.colors = self.get_vertices(width, height, m, n)
+        self.positions, self.indices, self.normals, self.colors = self.get_vertices()
         super().__init__(program, self.positions, self.colors, self.normals)
 
         self.element_buff = glGenBuffers(1)
