@@ -285,7 +285,7 @@ class Cylinder(Primitives):
 
     def draw(self, M, V, P):
         if self.material is not None:
-            self.material.use()
+            self.material.update()
         glBindVertexArray(self.vao)
 
         glEnable(GL_POLYGON_OFFSET_FILL)

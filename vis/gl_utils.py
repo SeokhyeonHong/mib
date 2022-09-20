@@ -60,7 +60,9 @@ class Light():
         self.specular = specular
         self.attenuation = attenuation
 
-    def use(self):
+        self.update()
+
+    def update(self):
         glUniform4fv(glGetUniformLocation(self.program, "light.position"), 1, glm.value_ptr(self.position))
         glUniform3fv(glGetUniformLocation(self.program, "light.ambient"), 1, glm.value_ptr(self.ambient))
         glUniform3fv(glGetUniformLocation(self.program, "light.diffuse"), 1, glm.value_ptr(self.diffuse))
@@ -80,8 +82,10 @@ class Material():
         self.diffuse = diffuse
         self.specular = specular
         self.shininess = shininess
+
+        self.update()
     
-    def use(self):
+    def update(self):
         glUniform3fv(glGetUniformLocation(self.program, "material.ambient"), 1, glm.value_ptr(self.ambient))
         glUniform3fv(glGetUniformLocation(self.program, "material.diffuse"), 1, glm.value_ptr(self.diffuse))
         glUniform3fv(glGetUniformLocation(self.program, "material.specular"), 1, glm.value_ptr(self.specular))
@@ -92,11 +96,11 @@ def get_shader(filename):
     dirname = os.path.dirname(os.path.abspath(__file__))
     return open(os.path.join(dirname, filename), 'r').read()
 
-def init_glfw():
+def init_glfw(width=1920, height=1080):
     if not glfw.init():
         return None
  
-    window = glfw.create_window(1920, 1080, "OpenGL Window", None, None)
+    window = glfw.create_window(width, height, "OpenGL Window", None, None)
     if not window:
         glfw.terminate()
         return None

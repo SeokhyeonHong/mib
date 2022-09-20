@@ -8,6 +8,8 @@ from .utils import *
 from .gl_utils import *
 from .primitives import *
 
+# global variables
+
 def display(anim, parents, gt=None, targets=None, fps=30, save_gif=False, gif_name="animation.gif"):
     """
     :param anim: (#frames, #joints, 3) array of joint positions
@@ -17,102 +19,71 @@ def display(anim, parents, gt=None, targets=None, fps=30, save_gif=False, gif_na
     :param save_gif: whether to save the animation as a gif
     :param gif_name: name of the gif file
     """
-    # GL settings
-    window = init_glfw()
+    window = init_glfw(width=1920, height=1080)
     if window is None:
         return
-    glfw.swap_interval(0)
-    glfw.set_input_mode(window, glfw.STICKY_KEYS, GL_TRUE)
-    glfw.set_key_callback(window, key_event)
- 
+
     program = compile_shader()
 
     camera = Camera()
-    light = Light(program)
-    light.use()
-    
     width, height = glfw.get_window_size(window)[0], glfw.get_window_size(window)[1]
     aspect = width / height
     P = camera.get_projection_matrix(aspect)
+    
+    light = Light(program)
+    light.update()
 
     glEnable(GL_DEPTH_TEST)
     glDepthFunc(GL_LESS)
     
-    prev = 0.0
+    prev_time = 0.0
     frame = 0
 
-    # Joints
     interval = 1.0 / fps
 
     images = []
-    checkerboard = Checkerboard(program, 10000, 10000, 100,100)
+    checkerboard = Checkerboard(program, 10000, 10000, 500, 500)
 
     material = Material(program, ambient=glm.vec3(0.0, 1.0, 0.0))
-    bones = [Cylinder(program, 2, 1, 16, material) for i in range(anim.shape[1])]
+    bones = [Cylinder(program, .5, 1, 16, material) for i in range(anim.shape[1])]
     if targets is not None:
         target_material = Material(program, ambient=glm.vec3(1.0, 0.0, 0.0))
-        target_chars = []
+        target_bones = []
         for i in range(targets.shape[0]):
-            target_chars.append([Cylinder(program, 2, 1, 16, target_material) for i in range(targets.shape[1])])
+            target_bones.append([Cylinder(program, .5, 1, 16, target_material) for i in range(targets.shape[1])])
 
     if gt is not None:
         gt_material = Material(program, ambient=glm.vec3(0.0, 0.0, 1.0))
-        gt_bones = [Cylinder(program, 2, 1, 16, gt_material) for i in range(gt.shape[1])]
+        gt_bones = [Cylinder(program, .5, 1, 16, gt_material) for i in range(gt.shape[1])]
 
     while not glfw.window_should_close(window) and frame < anim.shape[0]:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glClearColor(0.5, 0.5, 0.5, 1.0)
         glPolygonOffset(1, 1)
 
-        curr = glfw.get_time()
-        dt = curr - prev
+        curr_time = glfw.get_time()
+        dt = curr_time - prev_time
         if dt > interval:
-            prev = curr
+            prev_time = curr_time
 
-            # render settings
-            render_frame = anim[frame]
+            # move camera to see the root of the character
+            eye = glm.vec3(0, 50, 125)
+            joint_pos = anim[frame][0]
+            camera.center = glm.vec3(joint_pos[0], joint_pos[1], joint_pos[2])
+            camera.eye = camera.center + eye
+            V = camera.get_view_matrix()
 
-            for joint_idx, joint_pos in enumerate(render_frame):
-                if joint_idx == 0:
-                    eye = glm.vec3(0, 200, 500)
-                    camera.center = glm.vec3(joint_pos[0], joint_pos[1], joint_pos[2])
-                    camera.eye = camera.center + eye
-                    continue
-                parent_idx = parents[joint_idx]
-                parent_pos = render_frame[parent_idx]
-                
-                center = (joint_pos + parent_pos) / 2
-                center = glm.vec3(center[0], center[1], center[2])
-
-                dist = np.linalg.norm(joint_pos - parent_pos)
-                dir = (joint_pos - parent_pos) / (dist + 1e-5)
-                dir = glm.vec3(dir[0], dir[1], dir[2])
-
-                axis = glm.cross(glm.vec3(0, 1, 0), dir)
-                angle = glm.acos(glm.dot(glm.vec3(0, 1, 0), dir))
-
-                M = glm.mat4(1.0)
-                M = glm.translate(M, center)
-                M = glm.rotate(M, angle, axis)
-                M = glm.scale(M, glm.vec3(1, dist, 1))
-
-                V = camera.get_view_matrix()
-                bones[joint_idx].draw(M, V, P)
-
-            if gt is not None:
-                render_frame = gt[frame]
-
-                for joint_idx, joint_pos in enumerate(render_frame):
+            def render_pose(joints, bones, parents):
+                for joint_idx, joint_pos in enumerate(joints):
                     if joint_idx == 0:
                         continue
-                    parent_idx = parents[joint_idx]
-                    parent_pos = render_frame[parent_idx]
+                    parent_pos = joints[parents[joint_idx]]
                     
                     center = (joint_pos + parent_pos) / 2
                     center = glm.vec3(center[0], center[1], center[2])
 
                     dist = np.linalg.norm(joint_pos - parent_pos)
-                    dir = (joint_pos - parent_pos) / (dist + 1e-5)
+                    dir = (joint_pos - parent_pos) / (dist + 1e-8)
                     dir = glm.vec3(dir[0], dir[1], dir[2])
 
                     axis = glm.cross(glm.vec3(0, 1, 0), dir)
@@ -123,35 +94,16 @@ def display(anim, parents, gt=None, targets=None, fps=30, save_gif=False, gif_na
                     M = glm.rotate(M, angle, axis)
                     M = glm.scale(M, glm.vec3(1, dist, 1))
 
-                    V = camera.get_view_matrix()
-                    gt_bones[joint_idx].draw(M, V, P)
+                    bones[joint_idx].draw(M, V, P)
+            
+            render_pose(anim[frame], bones, parents)
 
+            if gt is not None:
+                render_pose(gt[frame], gt_bones, parents)
 
             if targets is not None:
                 for char_idx, t in enumerate(targets):
-                    for joint_idx, joint_pos in enumerate(t):
-                        if joint_idx == 0:
-                            continue
-                        parent_idx = parents[joint_idx]
-                        parent_pos = t[parent_idx]
-                        
-                        center = (joint_pos + parent_pos) / 2
-                        center = glm.vec3(center[0], center[1], center[2])
-
-                        dist = np.linalg.norm(joint_pos - parent_pos)
-                        dir = (joint_pos - parent_pos) / (dist + 1e-5)
-                        dir = glm.vec3(dir[0], dir[1], dir[2])
-
-                        axis = glm.cross(glm.vec3(0, 1, 0), dir)
-                        angle = glm.acos(glm.dot(glm.vec3(0, 1, 0), dir))
-
-                        M = glm.mat4(1.0)
-                        M = glm.translate(M, center)
-                        M = glm.rotate(M, angle, axis)
-                        M = glm.scale(M, glm.vec3(1, dist, 1))
-
-                        V = camera.get_view_matrix()
-                        target_chars[char_idx][joint_idx].draw(M, V, P)
+                    render_pose(t, target_bones[char_idx], parents)
 
             checkerboard.draw(V, P)
 

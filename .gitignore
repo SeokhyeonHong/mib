@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.pth
+*.pkl
+
+# saved files
+save/
+log/
