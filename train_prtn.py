@@ -44,18 +44,16 @@ if __name__ == "__main__":
             data = data.to(device)
             phase = phase.to(device)
 
-            target_data = data[:, target_frame:target_frame+1, :]
-            target_phase = phase[:, target_frame:target_frame+1]
-
             # network initialization
             model.init_hidden(batch_size, data[:, 0:1, :], phase[:, 0:1])
-            model.set_target(target_data, target_phase)
+            model.set_target(data[:, target_frame:target_frame+1, :], phase[:, target_frame:target_frame+1])
 
             # prediction
             preds, deltas = [], []
             for f in range(0, target_frame):
-                input_data = data[:, f:f+1, :] if f < past_context or random() < teacher_prob else pred
-                input_phase = phase[:, f:f+1] if f < past_context or random() < teacher_prob else input_phase + delta_phase
+                rand = random()
+                input_data = data[:, f:f+1, :] if f < past_context or rand < teacher_prob else pred
+                input_phase = phase[:, f:f+1] if f < past_context or rand < teacher_prob else input_phase + delta_phase
                 input_phase = torch.where(input_phase < 1, input_phase, input_phase - 1)
 
                 pred, delta_phase = model(input_data, input_phase)

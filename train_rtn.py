@@ -42,11 +42,9 @@ if __name__ == "__main__":
             data = (data - mean) / std
             data = data.to(device)
 
-            target = data[:, target_frame:target_frame+1, :]
-
             # network initialization
             model.init_hidden(batch_size, data[:, 0:1, :])
-            model.set_target(target)
+            model.set_target(data[:, target_frame:target_frame+1, :])
 
             # prediction
             preds = []
