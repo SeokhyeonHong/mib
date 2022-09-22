@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from base_model import MLP, PhaseMLP
+from .base_model import MLP, PhaseMLP
 
 class RTN(nn.Module):
     def __init__(self,

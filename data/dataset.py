@@ -7,6 +7,9 @@ from . import bvh
 from . import utils
 
 def process_pkl(pickle_name, dir_path, window, offset, phase, sampling_interval):
+    if not os.path.exists(os.path.join(dir_path, "pickle")):
+        os.makedirs(os.path.join(dir_path, "pickle"))
+
     path = os.path.join(dir_path, "pickle", pickle_name)
     if pickle_name in os.listdir(os.path.join(dir_path, "pickle")):
         with open(path, "rb") as f:
@@ -43,8 +46,7 @@ class MotionDataset(Dataset):
         self.raw_data = process_pkl(pickle_name, self.dir_path, self.window, self.offset, self.phase, self.sampling_interval)
         
         if self.phase:
-            self.phase_data = self.raw_data["phase"]
-            self.phase_data = torch.from_numpy(self.phase_data).float()
+            self.phase_data = torch.from_numpy(self.raw_data["phase"]).float()
 
         func_dict = {
             "offset": self.get_offset,
@@ -54,11 +56,9 @@ class MotionDataset(Dataset):
             "global_root_vel": self.get_global_root_vel,
             "local_pos": self.get_local_pos,
             "local_quat": self.get_local_quat,
+            "local_vel": self.get_local_vel,
             "root_rel_pos": self.get_root_rel_pos,
         }
-
-        # print(self.raw_data["local_quat"].shape)
-        # print(self.raw_data["phase"].shape)
 
         self.data = []
         for key in keys:
@@ -84,7 +84,7 @@ class MotionDataset(Dataset):
         return self.raw_data["global_vel"][..., 0:1, :]
 
     def get_local_quat(self):
-        return self.raw_data["local_quat"][..., 0:1, :]
+        return self.raw_data["local_quat"]
         
     def get_root_quat(self):
         return self.raw_data["local_quat"][..., 0:1, :]
@@ -95,6 +95,13 @@ class MotionDataset(Dataset):
         root_rot = self.get_root_quat()
         local_pos = utils.quat_mul_vec(utils.quat_inv(root_rot), (global_pos - root_pos))
         return local_pos
+
+    def get_local_vel(self):
+        global_vel = self.get_global_vel()
+        root_vel = self.get_global_root_vel()
+        root_rot = self.get_root_quat()
+        local_vel = utils.quat_mul_vec(utils.quat_inv(root_rot), (global_vel - root_vel))
+        return local_vel
 
     def get_root_rel_pos(self):
         res = self.get_global_pos() - self.get_global_root_pos()
@@ -114,6 +121,10 @@ class MotionDataset(Dataset):
 
     def find_data(self, key):
         return self.raw_data[key]
+    
+    def transpose(self, dim0, dim1):
+        self.data = self.data.transpose(dim0, dim1).contiguous()
+        print(f"Dataset shape transposed: {self.data.shape}")
     
     def __len__(self):
         return len(self.data)

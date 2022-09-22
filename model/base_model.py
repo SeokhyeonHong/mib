@@ -4,22 +4,22 @@ import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dims, output_dim, activation=nn.LeakyReLU(inplace=True), activation_at_last=False):
+    def __init__(self, input_dim, hidden_dims, output_dim, activation=F.leaky_relu, activation_at_last=False):
         super(MLP, self).__init__()
+        self.activation = activation
+        self.activation_at_last = activation_at_last
 
-        layers = []
+        self.layers = nn.ModuleList()
         for h_dim in hidden_dims:
-            layers.append(nn.Linear(input_dim, h_dim))
-            layers.append(activation)
-            input_dim = h_dim
-        layers.append(nn.Linear(input_dim, output_dim))
-        if activation_at_last:
-            layers.append(nn.LeakyReLU(inplace=True))
-        
-        self.layers = nn.Sequential(*layers)
+            self.layers.append(nn.Linear(input_dim, h_dim))
+        self.layers.append(nn.Linear(input_dim, output_dim))
     
     def forward(self, x):
-        return self.layers(x)
+        for i in range(len(self.layers)):
+            x = self.layers[i](x)
+            if i != len(self.layers) - 1 or self.activation_at_last:
+                x = self.activation(x)
+        return x
 
 class PhaseMLP(nn.Module):
     def __init__(self, input_dim, hidden_dims, output_dim, activation=F.elu, activation_at_last=False):
@@ -52,9 +52,7 @@ class PhaseMLP(nn.Module):
             weight = self.cubic(param_w[idx_0], param_w[idx_1], param_w[idx_2], param_w[idx_3], w)
             bias = self.cubic(param_b[idx_0], param_b[idx_1], param_b[idx_2], param_b[idx_3], w)
             x = torch.bmm(x, weight) + bias
-            if i < len(self.params_w) - 1:
-                x = self.activation(x)
-            elif self.activation_at_last:
+            if i < len(self.params_w) - 1 or self.activation_at_last:
                 x = self.activation(x)
         return x
     

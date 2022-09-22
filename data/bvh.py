@@ -159,6 +159,9 @@ def read_bvh(filename, order=None, sampling_interval=1):
     return Anim(rotations, positions, offsets, parents, names)
 
 def read_phase(filename, sampling_interval=1):
+    if not os.path.exists(filename):
+        raise Exception("File not found: %s" % filename)
+
     f = open(filename, "r")
     lines = f.readlines()
     data = []

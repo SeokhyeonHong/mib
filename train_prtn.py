@@ -53,8 +53,7 @@ if __name__ == "__main__":
             for f in range(0, target_frame):
                 rand = random()
                 input_data = data[:, f:f+1, :] if f < past_context or rand < teacher_prob else pred
-                input_phase = phase[:, f:f+1] if f < past_context or rand < teacher_prob else input_phase + delta_phase
-                input_phase = torch.where(input_phase < 1, input_phase, input_phase - 1)
+                input_phase = phase[:, f:f+1]
 
                 pred, delta_phase = model(input_data, input_phase)
 
@@ -67,11 +66,11 @@ if __name__ == "__main__":
             # compute loss and update
             optimizer.zero_grad()
             
-            loss_recon = F.l1_loss(preds, data[:, 1:target_frame+1, :]) # reconstruction loss
+            loss_recon = F.mse_loss(preds, data[:, 1:target_frame+1, :]) # reconstruction loss
 
             delta_phase_gt = phase[:, 1:target_frame+1] - phase[:, 0:target_frame]
             delta_phase_gt = torch.where(delta_phase_gt < 0, delta_phase_gt + 1, delta_phase_gt)
-            loss_phase = F.l1_loss(deltas, delta_phase_gt) # phase loss
+            loss_phase = F.mse_loss(deltas, delta_phase_gt) # phase loss
 
             loss = loss_recon + loss_phase # total loss
             loss.backward()
