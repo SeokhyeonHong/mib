@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
             # compute loss and update
             optimizer.zero_grad()
-            loss = F.l1_loss(preds, data[:, 1:target_frame+1, :])
+            loss = F.mse_loss(preds, data[:, 1:target_frame+1, :])
             loss.backward()
             loss_avg += loss.item()
             optimizer.step()
