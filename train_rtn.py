@@ -51,13 +51,15 @@ if __name__ == "__main__":
             for f in range(0, target_frame):
                 input = data[:, f:f+1, :] if f < past_context or random() < teacher_prob else pred
                 pred = model(input)
-                preds.append(pred)
+                
+                if f >= past_context:
+                    preds.append(pred)
 
             preds = torch.cat(preds, dim=1)
 
             # compute loss and update
             optimizer.zero_grad()
-            loss = F.mse_loss(preds, data[:, 1:target_frame+1, :])
+            loss = F.mse_loss(preds, data[:, past_context+1:target_frame+1, :])
             loss.backward()
             loss_avg += loss.item()
             optimizer.step()

@@ -51,14 +51,14 @@ if __name__ == "__main__":
             # prediction
             preds, deltas = [], []
             for f in range(0, target_frame):
-                rand = random()
-                input_data = data[:, f:f+1, :] if f < past_context or rand < teacher_prob else pred
+                input_data = data[:, f:f+1, :] if f < past_context or random() < teacher_prob else pred
                 input_phase = phase[:, f:f+1]
 
                 pred, delta_phase = model(input_data, input_phase)
 
-                preds.append(pred)
-                deltas.append(delta_phase)
+                if f >= past_context:
+                    preds.append(pred)
+                    deltas.append(delta_phase)
             
             preds = torch.cat(preds, dim=1)
             deltas = torch.cat(deltas, dim=1)
@@ -66,9 +66,9 @@ if __name__ == "__main__":
             # compute loss and update
             optimizer.zero_grad()
             
-            loss_recon = F.mse_loss(preds, data[:, 1:target_frame+1, :]) # reconstruction loss
+            loss_recon = F.mse_loss(preds, data[:, past_context+1:target_frame+1, :]) # reconstruction loss
 
-            delta_phase_gt = phase[:, 1:target_frame+1] - phase[:, 0:target_frame]
+            delta_phase_gt = phase[:, past_context+1:target_frame+1] - phase[:, past_context:target_frame]
             delta_phase_gt = torch.where(delta_phase_gt < 0, delta_phase_gt + 1, delta_phase_gt)
             loss_phase = F.mse_loss(deltas, delta_phase_gt) # phase loss
 
