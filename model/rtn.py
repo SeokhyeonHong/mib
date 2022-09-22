@@ -23,7 +23,8 @@ class RTN(nn.Module):
         super(RTN, self).__init__()
         self.dof = dof
 
-        self.hidden_init = MLP(dof, hidden_dims["hidden_init"], output_dims["hidden_init"] * 2, activation_at_last=True)
+        self.h_initializer = MLP(dof, hidden_dims["hidden_init"], output_dims["hidden_init"], activation_at_last=True)
+        self.c_initializer = MLP(dof, hidden_dims["hidden_init"], output_dims["hidden_init"], activation_at_last=True)
         self.frame_encoder = MLP(dof, hidden_dims["frame_encoder"], output_dims["frame_encoder"], activation_at_last=True)
         self.offset_encoder = MLP(dof, hidden_dims["offset_encoder"], output_dims["offset_encoder"], activation_at_last=True)
         self.target_encoder = MLP(dof, hidden_dims["target_encoder"], output_dims["target_encoder"], activation_at_last=True)
@@ -36,15 +37,15 @@ class RTN(nn.Module):
         self.enc_target = self.target_encoder(target)
 
     def init_hidden(self, batch_size, init_frame):
-        self.h, self.c = self.hidden_init(init_frame).chunk(2, dim=-1)
-        self.h = self.h.view(1, batch_size, -1).contiguous()
-        self.c = self.c.view(1, batch_size, -1).contiguous()
+        self.h = self.h_initializer(init_frame).view(1, batch_size, -1)
+        self.c = self.c_initializer(init_frame).view(1, batch_size, -1)
 
     def forward(self, x):
         enc_frame = self.frame_encoder(x)
         enc_offset = self.offset_encoder(self.target - x)
-        output, (self.h, self.c) = self.lstm(torch.cat([enc_frame, enc_offset, self.enc_target], dim=-1), (self.h, self.c))
-        return self.decoder(output) + x
+        h_in = torch.cat([enc_frame, enc_offset, self.enc_target], dim=-1).unsqueeze(1)
+        output, (self.h, self.c) = self.lstm(h_in, (self.h, self.c))
+        return self.decoder(output.squeeze(1)) + x
 
 class PhaseRTN(nn.Module):
     def __init__(self,
@@ -87,6 +88,7 @@ class PhaseRTN(nn.Module):
     def forward(self, x, phase):
         enc_frame = self.frame_encoder(x, phase)
         enc_offset = self.offset_encoder(self.target - x, phase)
-        output, (self.h, self.c) = self.lstm(torch.cat([enc_frame, enc_offset, self.enc_target], dim=-1), (self.h, self.c))
-        output = self.decoder(output, phase)
-        return output[:, :, :-1] + x, output[:, :, -1]
+        h_in = torch.cat([enc_frame, enc_offset, self.enc_target], dim=-1).unsqueeze(1)
+        output, (self.h, self.c) = self.lstm(h_in, (self.h, self.c))
+        output = self.decoder(output.squeeze(1), phase)
+        return output[..., :-1] + x, output[..., -1]

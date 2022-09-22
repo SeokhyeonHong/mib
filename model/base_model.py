@@ -47,6 +47,7 @@ class PhaseMLP(nn.Module):
         self.activation_at_last = activation_at_last
     
     def forward(self, x, phase):
+        x = x.unsqueeze(1)
         w, idx_0, idx_1, idx_2, idx_3 = self.phase_idx(phase)
         for i in range(0, len(self.params_w)):
             param_w, param_b = self.params_w[i], self.params_b[i]
@@ -55,7 +56,7 @@ class PhaseMLP(nn.Module):
             x = torch.bmm(x, weight) + bias
             if i < len(self.params_w) - 1 or self.activation_at_last:
                 x = self.activation(x)
-        return x
+        return x.squeeze(1)
     
     def cubic(self, a0, a1, a2, a3, w):
         return\

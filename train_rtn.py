@@ -43,19 +43,19 @@ if __name__ == "__main__":
             data = data.to(device)
 
             # network initialization
-            model.init_hidden(batch_size, data[:, 0:1, :])
-            model.set_target(data[:, target_frame:target_frame+1, :])
+            model.init_hidden(batch_size, data[:, 0, :])
+            model.set_target(data[:, target_frame, :])
 
             # prediction
             preds = []
             for f in range(0, target_frame):
-                input = data[:, f:f+1, :] if f < past_context or random() < teacher_prob else pred
+                input = data[:, f, :] if f < past_context or random() < teacher_prob else pred
                 pred = model(input)
                 
                 if f >= past_context:
                     preds.append(pred)
 
-            preds = torch.cat(preds, dim=1)
+            preds = torch.stack(preds, dim=1)
 
             # compute loss and update
             optimizer.zero_grad()

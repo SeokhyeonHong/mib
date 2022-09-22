@@ -45,14 +45,14 @@ if __name__ == "__main__":
             phase = phase.to(device)
 
             # network initialization
-            model.init_hidden(batch_size, data[:, 0:1, :], phase[:, 0:1])
-            model.set_target(data[:, target_frame:target_frame+1, :], phase[:, target_frame:target_frame+1])
+            model.init_hidden(batch_size, data[:, 0, :], phase[:, 0])
+            model.set_target(data[:, target_frame, :], phase[:, target_frame])
 
             # prediction
             preds, deltas = [], []
             for f in range(0, target_frame):
-                input_data = data[:, f:f+1, :] if f < past_context or random() < teacher_prob else pred
-                input_phase = phase[:, f:f+1]
+                input_data = data[:, f, :] if f < past_context or random() < teacher_prob else pred
+                input_phase = phase[:, f]
 
                 pred, delta_phase = model(input_data, input_phase)
 
@@ -60,8 +60,8 @@ if __name__ == "__main__":
                     preds.append(pred)
                     deltas.append(delta_phase)
             
-            preds = torch.cat(preds, dim=1)
-            deltas = torch.cat(deltas, dim=1)
+            preds = torch.stack(preds, dim=1)
+            deltas = torch.stack(deltas, dim=1)
 
             # compute loss and update
             optimizer.zero_grad()
