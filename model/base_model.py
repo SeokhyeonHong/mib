@@ -12,6 +12,7 @@ class MLP(nn.Module):
         self.layers = nn.ModuleList()
         for h_dim in hidden_dims:
             self.layers.append(nn.Linear(input_dim, h_dim))
+            input_dim = h_dim
         self.layers.append(nn.Linear(input_dim, output_dim))
     
     def forward(self, x):
