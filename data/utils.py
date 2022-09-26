@@ -1,6 +1,35 @@
+import torch
 import numpy as np
 
+# PyTorch version
+def quat_fk_torch(lrot, lpos, parents):
+    gp, gr = [lpos[..., :1, :]], [lrot[..., :1, :]]
+    for i in range(1, len(parents)):
+        gp.append(quat_mul_vec_torch(gr[parents[i]], lpos[..., i:i+1, :]) + gp[parents[i]])
+        gr.append(quat_mul_torch    (gr[parents[i]], lrot[..., i:i+1, :]))
 
+    res = torch.cat(gr, dim=-2), torch.cat(gp, dim=-2)
+    return res
+
+def quat_mul_torch(x, y):
+    x0, x1, x2, x3 = x[..., 0:1], x[..., 1:2], x[..., 2:3], x[..., 3:4]
+    y0, y1, y2, y3 = y[..., 0:1], y[..., 1:2], y[..., 2:3], y[..., 3:4]
+
+    res = torch.cat([
+        y0 * x0 - y1 * x1 - y2 * x2 - y3 * x3,
+        y0 * x1 + y1 * x0 - y2 * x3 + y3 * x2,
+        y0 * x2 + y1 * x3 + y2 * x0 - y3 * x1,
+        y0 * x3 - y1 * x2 + y2 * x1 + y3 * x0], dim=-1)
+
+    return res
+
+def quat_mul_vec_torch(q, x):
+    t = 2.0 * torch.cross(q[..., 1:], x)
+    res = x + q[..., 0][..., None] * t + torch.cross(q[..., 1:], t)
+
+    return res
+
+# NumPy version
 def length(x, axis=-1, keepdims=True):
     """
     Computes vector norm along a tensor axis(axes)

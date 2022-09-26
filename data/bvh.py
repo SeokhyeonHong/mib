@@ -1,6 +1,4 @@
-from pprint import pprint
 import re, os, ntpath
-import math
 import numpy as np
 from . import utils
 
@@ -23,36 +21,19 @@ ordermap = {
 }
 
 class Anim(object):
-    """
-    A very basic animation object
-    """
-    def __init__(self, quats, pos, offsets, parents, bones):
-        """
-        :param quats: local quaternions tensor
-        :param pos: local positions tensor
-        :param offsets: local joint offsets
-        :param parents: bone hierarchy
-        :param bones: bone names
-        """
-        self.quats = quats
-        self.pos = pos
+    def __init__(self, rotations, positions, offsets, parents, bones, order, fps):
+        self.rotations = rotations
+        self.positions = positions
         self.offsets = offsets
         self.parents = parents
         self.bones = bones
+        self.order = order
+        self.fps = fps
 
-def read_bvh(filename, order=None, sampling_interval=1):
-    """
-    Reads a BVH file and extracts animation information.
-
-    :param filename: BVh filename
-    :param order: order of euler rotations
-    :return: A simple Anim object conatining the extracted information.
-    """
-
+def read_bvh(filename, order=None):
     f = open(filename, "r")
 
     i = 0
-    fi = 0
     active = -1
     end_site = False
 
@@ -119,46 +100,43 @@ def read_bvh(filename, order=None, sampling_interval=1):
         fmatch = re.match("\s*Frames:\s+(\d+)", line)
         if fmatch:
             fnum = int(fmatch.group(1))
-            positions = offsets[np.newaxis].repeat(math.ceil(fnum / sampling_interval), axis=0)
-            rotations = np.zeros((math.ceil(fnum / sampling_interval), len(orients), 3))
+            positions = offsets[np.newaxis].repeat(fnum, axis=0)
+            rotations = np.zeros((fnum, len(orients), 3))
             continue
 
         fmatch = re.match("\s*Frame Time:\s+([\d\.]+)", line)
         if fmatch:
             frametime = float(fmatch.group(1))
+            fps = int(1. / frametime)
             continue
 
         dmatch = line.strip().split(' ')
         if dmatch:
-            if i % sampling_interval == 0 and i < fnum:
-                data_block = np.array(list(map(float, dmatch)))
-                N = len(parents)
-                if channels == 3:
-                    positions[fi, 0:1] = data_block[0:3]
-                    rotations[fi, :] = data_block[3:].reshape(N, 3)
-                elif channels == 6:
-                    data_block = data_block.reshape(N, 6)
-                    positions[fi, :] = data_block[:, 0:3]
-                    rotations[fi, :] = data_block[:, 3:6]
-                elif channels == 9:
-                    positions[fi, 0] = data_block[0:3]
-                    data_block = data_block[3:].reshape(N - 1, 9)
-                    rotations[fi, 1:] = data_block[:, 3:6]
-                    positions[fi, 1:] += data_block[:, 0:3] * data_block[:, 6:9]
-                else:
-                    raise Exception("Too many channels! %i" % channels)
-                fi += 1
+            data_block = np.array(list(map(float, dmatch)))
+            N = len(parents)
+            fi = i
+            if channels == 3:
+                positions[fi, 0:1] = data_block[0:3]
+                rotations[fi, :] = data_block[3:].reshape(N, 3)
+            elif channels == 6:
+                data_block = data_block.reshape(N, 6)
+                positions[fi, :] = data_block[:, 0:3]
+                rotations[fi, :] = data_block[:, 3:6]
+            elif channels == 9:
+                positions[fi, 0] = data_block[0:3]
+                data_block = data_block[3:].reshape(N - 1, 9)
+                rotations[fi, 1:] = data_block[:, 3:6]
+                positions[fi, 1:] += data_block[:, 0:3] * data_block[:, 6:9]
+            else:
+                raise Exception("Too many channels! %i" % channels)
 
             i += 1
 
     f.close()
 
-    rotations = utils.euler_to_quat(np.radians(rotations), order=order)
-    rotations = utils.remove_quat_discontinuities(rotations)
+    return Anim(rotations, positions, offsets, parents, names, order, fps)
 
-    return Anim(rotations, positions, offsets, parents, names)
-
-def read_phase(filename, sampling_interval=1):
+def read_phase(filename):
     if not os.path.exists(filename):
         raise Exception("File not found: %s" % filename)
 
@@ -166,8 +144,7 @@ def read_phase(filename, sampling_interval=1):
     lines = f.readlines()
     data = []
     for i in range(1, len(lines)):
-        if (i-1) % sampling_interval == 0:
-            data.append(float(lines[i]))
+        data.append(float(lines[i]))
     f.close()
 
     return np.array(data)
@@ -236,75 +213,52 @@ def get_lafan1_set(bvh_path, actors, window=50, offset=20):
 
     return X, Q, anim.parents, contacts_l, contacts_r
 
-def get_raw_data(path, window=50, offset=20, phase=False, sampling_interval=1):
-    """
-    Extract the same test set as in the article, given the location of the BVH files.
+def get_data_dict(path, phase=False, target_fps=30):
+    seq_features = []
 
-    :param path: Path to the dataset BVH files
-    :param train: training set if True, test set if False
-    :param window: width  of the sliding windows (in timesteps)
-    :param offset: offset between windows (in timesteps)
-    :param phase: if True, return the phase of the motion
-    :return: tuple:
-        X: local positions
-        Q: local quaternions
-        parents: list of parent indices defining the bone hierarchy
-        contacts_l: binary tensor of left-foot contacts of shape (Batchsize, Timesteps, 2)
-        contacts_r: binary tensor of right-foot contacts of shape (Batchsize, Timesteps, 2)
-    """
-
-    bone_offset = []
-    global_pos = []
-    global_vel = []
-    local_quat = []
-    phases = []
-
-    # Extract
     bvh_files = os.listdir(path)
-
     for file in bvh_files:
         if file.endswith('.bvh'):
             print('Processing file {}'.format(file))
             seq_path = os.path.join(path, file)
-            anim = read_bvh(seq_path, sampling_interval=sampling_interval)
+            anim = read_bvh(seq_path)
+
+            # process the data for fps
+            if anim.fps % target_fps != 0:
+                raise Exception("Target FPS must be a divisor of the BVH FPS")
+            step = int(anim.fps / target_fps)
             
+            rot = anim.rotations[::step]
+            pos = anim.positions[::step]
             if phase:
                 phase_path = os.path.join(path, file[:-4] + ".phase")
-                phase_data = read_phase(phase_path, sampling_interval)
+                phase_data = read_phase(phase_path)[::step]
 
-            # Sliding windows
-            i = 1
-            while i+window < anim.pos.shape[0]:
-                q, p = utils.quat_fk(anim.quats[i-1:i+window], anim.pos[i-1:i+window], anim.parents)
+            # solve FK
+            quats = utils.euler_to_quat(np.radians(rot), order=anim.order)
+            quats = utils.remove_quat_discontinuities(quats)
+            global_q, global_p = utils.quat_fk(quats, pos, anim.parents)
+            global_root_p = global_p[:, 0:1]
+            global_root_q = global_q[:, 0:1]
+            local_p = utils.quat_mul_vec(utils.quat_inv(global_root_q), global_p - global_root_p)
+            
+            # features
+            features = {
+                "offset": anim.offsets,
+                "parents": anim.parents,
+                "global_pos": global_p[1:],
+                "global_vel": (global_p[1:] - global_p[:-1]) * target_fps,
+                "local_pos": local_p[1:],
+                "local_vel": (local_p[1:] - local_p[:-1]) * target_fps,
+                "local_euler": rot[1:],
+                "local_quat": quats[1:]
+            }
+            if phase:
+                features["phases"] = phase_data[1:]
 
-                bone_offset.append(anim.pos[i:i+window])
-                global_pos.append(p[1:])
-                global_vel.append(p[1:] - p[:-1])
-                local_quat.append(anim.quats[i:i+window])
-                if phase:
-                    phases.append(phase_data[i:i+window])
+            seq_features.append(features)
 
-                i += offset
-
-    bone_offset = np.stack(bone_offset, axis=0)
-    global_pos = np.stack(global_pos, axis=0)
-    global_vel = np.stack(global_vel, axis=0)
-    local_quat = np.stack(local_quat, axis=0)
-    
-    if phase:
-        phases = np.stack(phases, axis=0)
-
-    ret_dict = {
-        "offset": bone_offset,
-        "global_pos": global_pos,
-        "global_vel": global_vel,
-        "local_quat": local_quat,
-        "parents": anim.parents,
-    }
-    if phase:
-        ret_dict["phase"] = phases
-
-    return ret_dict
+    return seq_features
 
 def get_train_stats(bvh_folder, train_set):
     """
