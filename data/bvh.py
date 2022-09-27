@@ -254,7 +254,7 @@ def get_data_dict(path, phase=False, target_fps=30):
                 "local_quat": quats[1:]
             }
             if phase:
-                features["phases"] = phase_data[1:]
+                features["phase"] = phase_data[1:]
 
             seq_features.append(features)
 

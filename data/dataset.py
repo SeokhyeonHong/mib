@@ -20,13 +20,42 @@ def process_pkl(pickle_name, dir_path, phase, target_fps):
             pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
 
     return data
+
+class MotionDataset(Dataset):
+    def __init__(
+        self,
+        dir_path,
+        train,
+        window=50,
+        offset=20,
+        phase=False,
+        target_fps=30,
+    ):
+        super(MotionDataset, self).__init__()
+        self.window = window
+        self.offset = offset
+        self.phase = phase
+
+        dir_path = os.path.join(dir_path, "train" if train else "test")
+
+
+        if self.phase:
+            pickle_name = f"processed_fps{target_fps}_phase.pkl"
+        else:
+            pickle_name = f"processed_fps{target_fps}.pkl"
+
+        print(f"Loading {'train' if train else 'test'} data...")
+        self.seq_features = process_pkl(pickle_name, dir_path, phase, target_fps)
+        if train == False:
+            self.parents, self.bone_offset = self.seq_features[0]["parents"], self.seq_features[0]["offset"]
     
-def extract_features(seq_features, feature_keys, window, offset):
-    X = []
-    for key in feature_keys:
-        features = []
+    def extract_features(self, key):
+        X = []
+        num_windows = []
         print(f"Extracting {key} features...")
-        for seq in seq_features:
+
+        # extract features by feature keys
+        for seq in self.seq_features:
             if key in seq:
                 feature = seq[key]
             elif key.endswith("_root"):
@@ -36,41 +65,22 @@ def extract_features(seq_features, feature_keys, window, offset):
             else:
                 raise Exception(f"Key {key} not found")
 
+            # sliding windows
             idx = 0
-            while idx + window < feature.shape[0]:
-                features.append(torch.from_numpy(feature[idx:idx+window]))
-                print(torch.from_numpy(feature[idx:idx+window]))
-                idx += offset
-        features = torch.stack(features, dim=0)
-        X.append(features.view(*features.shape[:-2], -1))
-    X = torch.cat(X, dim=-1).float()
-    return X
+            windows = 0
+            while idx + self.window < feature.shape[0]:
+                X.append(torch.from_numpy(feature[idx:idx+self.window]))
+                idx += self.offset
+                windows += 1
+            
+            num_windows.append(windows)
+        
+        # convert to tensor
+        X = torch.stack(X, dim=0)
+        X = X.view(X.shape[0], X.shape[1], -1).float()
 
-
-class MotionDataset(Dataset):
-    def __init__(
-        self,
-        dir_path,
-        train,
-        window=50,
-        offset=20,
-        keys=["local_quat"],
-        phase=False,
-        target_fps=30,
-    ):
-        super(MotionDataset, self).__init__()
-
-        dir_path = os.path.join(dir_path, "train" if train else "test")
-        self.phase = phase
-
-        if self.phase:
-            pickle_name = f"processed_fps{target_fps}_phase.pkl"
-        else:
-            pickle_name = f"processed_fps{target_fps}.pkl"
-
-        print("Loading data...")
-        seq_features = process_pkl(pickle_name, dir_path, phase, target_fps)
-        self.data, self.num_windows = extract_features(seq_features, keys, window, offset)
+        self.num_windows = num_windows
+        return X
 
     def __len__(self):
         return len(self.data)

@@ -1,18 +1,14 @@
 import torch
-import torch.nn.functional as F
-from torch.optim import Adam
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from random import random
-from tqdm import tqdm
 
 from data.dataset import MotionDataset
 from model.rtn import RTN
 
 # training parameters
 epochs = 100
-lr = 1e-4
-batch_size = 32
+lr = 1e-5
+batch_size = 64
 
 # RTN parameters
 teacher_prob = 0.2
@@ -23,33 +19,49 @@ target_frame = 40
 # dataset parameters
 window_size = 50
 offset = 25
+target_fps = 30
 
 # dataset
 device = "cuda" if torch.cuda.is_available() else "cpu"
-motion = MotionDataset("D:/data/PFNN", train=True, window=window_size, offset=offset, keys=["global_root_vel", "root_rel_pos"], phase=False, sampling_interval=4)
-motion_loader = DataLoader(motion, batch_size=batch_size, shuffle=True, drop_last=True)
-mean, std = motion.mean(), motion.std()
-dof = motion.dof()
+train_dset = MotionDataset("D:/data/PFNN", train=True, window=window_size, offset=offset, phase=False, target_fps=target_fps)
 
 if __name__ == "__main__":
-    model = RTN(dof).to(device)
-    optimizer = Adam(model.parameters(), lr=lr)
+    seed = 777
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+
+    # prepare training data
+    gv_root = train_dset.extract_features("global_vel_root")
+    gp_root = train_dset.extract_features("global_pos_root")
+    gp = train_dset.extract_features("global_pos")
+    gp_root_rel = gp - gp_root.tile(1, 1, gp.shape[-1] // gp_root.shape[-1])
+    train_data = torch.cat([gv_root, gp_root_rel[..., 3:]], dim=-1)
+    
+    # training settings
+    num_batch = train_data.shape[0] // batch_size
+    model = RTN(train_data.shape[-1]).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    loss_fn = torch.nn.MSELoss()
     writer = SummaryWriter("log/RTN")
 
-    for epoch in tqdm(range(1, epochs+1), desc="Epoch"):
+    # training loop
+    for epoch in range(1, epochs+1):
         loss_avg = 0
-        for idx, data in enumerate(tqdm(motion_loader, desc="Batch")):
-            data = (data - mean) / std
-            data = data.to(device)
+        train_idx = torch.randperm(train_data.shape[0])
+        for i in range(num_batch):
+            print("Progress ", round(100 * i / num_batch, 2), "%", end="\r")
+            batch = train_data[train_idx[i*batch_size:(i+1)*batch_size]].to(device)
+            batch = (batch - batch.mean()) / (batch.std() + 1e-8)
 
             # network initialization
-            model.init_hidden(batch_size, data[:, 0, :])
-            model.set_target(data[:, target_frame, :])
+            model.init_hidden(batch_size, batch[:, 0, :])
+            model.set_target(batch[:, target_frame, :])
 
             # prediction
             preds = []
             for f in range(0, target_frame):
-                input = data[:, f, :] if f < past_context or random() < teacher_prob else pred
+                input = batch[:, f, :] if f < past_context or random() < teacher_prob else pred
                 pred = model(input)
                 
                 if f >= past_context:
@@ -59,13 +71,14 @@ if __name__ == "__main__":
 
             # compute loss and update
             optimizer.zero_grad()
-            loss = F.mse_loss(preds, data[:, past_context+1:target_frame+1, :])
+            loss = loss_fn(preds, batch[:, past_context+1:target_frame+1, :])
             loss.backward()
             loss_avg += loss.item()
             optimizer.step()
 
-        print(f"Epoch {epoch} loss: {loss_avg / len(motion_loader)}")
-        writer.add_scalar("loss", loss_avg / len(motion_loader), epoch)
+        # log
+        print(f"Epoch [{epoch} / {epochs}]     Loss: {loss_avg / num_batch}")
+        writer.add_scalar("loss", loss_avg / num_batch, epoch)
 
     save_dict = {
         "model": model.state_dict(),

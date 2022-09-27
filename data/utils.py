@@ -1,7 +1,21 @@
 import torch
 import numpy as np
 
-# PyTorch version
+###################
+# PyTorch version #
+###################
+def length_torch(x, dim=-1, keepdim=True):
+    res = torch.sqrt(torch.sum(x * x, dim=dim, keepdim=keepdim))
+    return res
+
+def normalize_torch(x, dim=-1, eps=1e-8):
+    res = x / (length_torch(x, dim=dim) + eps)
+    return res
+
+def quat_normalize_torch(x, eps=1e-8):
+    res = normalize_torch(x, eps=eps)
+    return res
+
 def quat_fk_torch(lrot, lpos, parents):
     gp, gr = [lpos[..., :1, :]], [lrot[..., :1, :]]
     for i in range(1, len(parents)):
@@ -29,7 +43,9 @@ def quat_mul_vec_torch(q, x):
 
     return res
 
-# NumPy version
+#################
+# NumPy version #
+#################
 def length(x, axis=-1, keepdims=True):
     """
     Computes vector norm along a tensor axis(axes)
@@ -78,7 +94,7 @@ def angle_axis_to_quat(angle, axis):
     """
     c = np.cos(angle / 2.0)[..., np.newaxis]
     s = np.sin(angle / 2.0)[..., np.newaxis]
-    q = np.concatenate([c, s * axis], axis=-1)
+    q = np.concatenate([c, s * axis], axis=-1, dtype=np.float32)
     return q
 
 
@@ -127,7 +143,7 @@ def quat_fk(lrot, lpos, parents):
     for i in range(1, len(parents)):
         gp.append(quat_mul_vec(gr[parents[i]], lpos[..., i:i+1, :]) + gp[parents[i]])
         gr.append(quat_mul    (gr[parents[i]], lrot[..., i:i+1, :]))
-
+    
     res = np.concatenate(gr, axis=-2), np.concatenate(gp, axis=-2)
     return res
 

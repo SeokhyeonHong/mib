@@ -10,15 +10,7 @@ from .primitives import *
 
 # global variables
 
-def display(anim, parents, gt=None, targets=None, fps=30, save_gif=False, gif_name="animation.gif"):
-    """
-    :param anim: (#frames, #joints, 3) array of joint positions
-    :param parents: (#joints) array of parent indices
-    :param targets: (#targets, #joints, 3) array of target poses
-    :param fps: frames per second
-    :param save_gif: whether to save the animation as a gif
-    :param gif_name: name of the gif file
-    """
+def display(anim, parents, gt=None, targets=None, fps=30, save_gif=False, gif_name="animation.gif", bone_radius=1, eye=glm.vec3(0, 200, 500)):
     window = init_glfw(width=1920, height=1080)
     if window is None:
         return
@@ -42,19 +34,19 @@ def display(anim, parents, gt=None, targets=None, fps=30, save_gif=False, gif_na
     interval = 1.0 / fps
 
     images = []
-    checkerboard = Checkerboard(program, 10000, 10000, 500, 500)
+    checkerboard = Checkerboard(program, 10000, 10000, 200, 200)
 
     material = Material(program, ambient=glm.vec3(0.0, 1.0, 0.0))
-    bones = [Cylinder(program, .5, 1, 16, material) for i in range(anim.shape[1])]
+    bones = [Cylinder(program, bone_radius, 1, 16, material) for i in range(anim.shape[1])]
     if targets is not None:
         target_material = Material(program, ambient=glm.vec3(1.0, 0.0, 0.0))
         target_bones = []
         for i in range(targets.shape[0]):
-            target_bones.append([Cylinder(program, .5, 1, 16, target_material) for i in range(targets.shape[1])])
+            target_bones.append([Cylinder(program, bone_radius, 1, 16, target_material) for i in range(targets.shape[1])])
 
     if gt is not None:
         gt_material = Material(program, ambient=glm.vec3(0.0, 0.0, 1.0))
-        gt_bones = [Cylinder(program, .5, 1, 16, gt_material) for i in range(gt.shape[1])]
+        gt_bones = [Cylinder(program, bone_radius, 1, 16, gt_material) for i in range(gt.shape[1])]
 
     while not glfw.window_should_close(window) and frame < anim.shape[0]:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -67,7 +59,6 @@ def display(anim, parents, gt=None, targets=None, fps=30, save_gif=False, gif_na
             prev_time = curr_time
 
             # move camera to see the root of the character
-            eye = glm.vec3(0, 50, 125)
             joint_pos = anim[frame][0]
             camera.center = glm.vec3(joint_pos[0], joint_pos[1], joint_pos[2])
             camera.eye = camera.center + eye
