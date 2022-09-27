@@ -1,13 +1,13 @@
 import torch
 from torch.utils.tensorboard import SummaryWriter
-from random import random
+import random
 
 from data.dataset import MotionDataset
 from model.rtn import RTN
 
 # training parameters
 epochs = 100
-lr = 1e-5
+lr = 1e-4
 batch_size = 64
 
 # RTN parameters
@@ -27,6 +27,7 @@ train_dset = MotionDataset("D:/data/PFNN", train=True, window=window_size, offse
 
 if __name__ == "__main__":
     seed = 777
+    random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
@@ -61,7 +62,7 @@ if __name__ == "__main__":
             # prediction
             preds = []
             for f in range(0, target_frame):
-                input = batch[:, f, :] if f < past_context or random() < teacher_prob else pred
+                input = batch[:, f, :] if f < past_context or random.random() < teacher_prob else pred
                 pred = model(input)
                 
                 if f >= past_context:

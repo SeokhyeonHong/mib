@@ -355,8 +355,7 @@ class Checkerboard(Primitives):
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, self.indices.nbytes, self.indices, GL_STATIC_DRAW)
 
     def get_vertices(self):
-        x0, x1 = -0.5 * self.width, 0.5 * self.width
-        z0, z1 = -0.5 * self.height, 0.5 * self.height
+        x0, z0 = -0.5 * self.width, -0.5 * self.height
         positions, normals, colors = [], [], []
         for i in range(self.m):
             for j in range(self.n):
@@ -372,9 +371,9 @@ class Checkerboard(Primitives):
                 positions.append([x_l, 0, z_t])
                 normals.append([0, 1, 0] * 6)
                 if (i + j) % 2 == 0:
-                    colors.append([0, 0, 0] * 6)
+                    colors.append([0.3, 0.3, 0.3] * 6)
                 else:
-                    colors.append([1, 1, 1] * 6)
+                    colors.append([0.6, 0.6, 0.6] * 6)
 
         positions = np.array(positions, dtype=np.float32).flatten()
         indices = np.array([i for i in range(len(positions) // 3)], dtype=np.uint32)

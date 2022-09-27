@@ -5,14 +5,23 @@ import numpy as np
 # PyTorch version #
 ###################
 def length_torch(x, dim=-1, keepdim=True):
+    """
+    :params x: tensor of shape (batch x seq x joints x 4)
+    """
     res = torch.sqrt(torch.sum(x * x, dim=dim, keepdim=keepdim))
     return res
 
 def normalize_torch(x, dim=-1, eps=1e-8):
+    """
+    :params x: tensor of shape (batch x seq x joints x 4)
+    """
     res = x / (length_torch(x, dim=dim) + eps)
     return res
 
 def quat_normalize_torch(x, eps=1e-8):
+    """
+    :params x: tensor of shape (batch x seq x joints x 4)
+    """
     res = normalize_torch(x, eps=eps)
     return res
 
@@ -40,9 +49,12 @@ def quat_mul_torch(x, y):
 def quat_mul_vec_torch(q, x):
     t = 2.0 * torch.cross(q[..., 1:], x)
     res = x + q[..., 0][..., None] * t + torch.cross(q[..., 1:], t)
-
     return res
 
+def quat_inv_torch(q):
+    res = torch.asarray([1, -1, -1, -1], dtype=torch.float32) * q
+    return res
+    
 #################
 # NumPy version #
 #################

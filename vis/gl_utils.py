@@ -47,7 +47,7 @@ class Camera():
 class Light():
     def __init__(self,
         program,
-        position=glm.vec4(-80, 6, -80, 1),
+        position=glm.vec4(10, 10, 10, 1),
         ambient=glm.vec3(.5),
         diffuse=glm.vec3(.5),
         specular=glm.vec3(.5),
