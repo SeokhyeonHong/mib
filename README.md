@@ -25,7 +25,7 @@ phase: labelled phase features
 To use labelled phase features, you should add `.phase` files within the same directory of `.bvh` files.
 
 ### Example code
-```
+```python
 from data.dataset import MotionDataset
 train_dset = MotionDataset(path, train, window, offset, phase, target_fps)
 train_data = train_dset.extract_features("local_quat")
