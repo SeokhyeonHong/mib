@@ -1,14 +1,9 @@
 import torch
-from torch.utils.data import DataLoader
 import numpy as np
 
 from data.dataset import MotionDataset
-from model.rtn import RTN, PhaseRTN
+from model.rtn import RTN
 from vis.vis import display
-
-from tqdm import tqdm
-
-batch_size = 1
 
 # RTN parameters
 teacher_prob = 0.2
@@ -19,78 +14,61 @@ target_frame = 40
 # dataset parameters
 window_size = 50
 offset = 25
+target_fps = 30
 
 # dataset
 device = "cuda" if torch.cuda.is_available() else "cpu"
-motion = MotionDataset("D:/data/PFNN", train=False, window=window_size, offset=offset, keys=["global_root_vel", "root_rel_pos"], phase=True, sampling_interval=4)
-motion_loader = DataLoader(motion, batch_size=batch_size, shuffle=True, drop_last=True)
-mean, std = motion.mean(), motion.std()
-dof = motion.dof()
+test_dset = MotionDataset("D:/data/PFNN", train=False, window=window_size, offset=offset, phase=False, target_fps=target_fps)
 
-def tensor_to_numpy(tensor, mean, std):
-    tensor = tensor.cpu()
-    mean = mean.cpu()
-    std = std.cpu()
-    tensor = tensor * std + mean
-    return tensor.detach().view(tensor.shape[0], -1, 3).numpy()
+def tensor_to_numpy(tensor):
+    return tensor.detach().cpu().view(tensor.shape[0], -1, 3).numpy()
 
 if __name__ == "__main__":
-    model_rtn = RTN(dof, device=device).to(device)
-    model_prtn = PhaseRTN(dof, device=device).to(device)
+    seed = 777
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+
+    # prepare training data
+    gv_root = test_dset.extract_features("global_vel_root")
+    gp_root = test_dset.extract_features("global_pos_root")
+    gp = test_dset.extract_features("global_pos")
+    gp_root_rel = gp - gp_root.tile(1, 1, gp.shape[-1] // gp_root.shape[-1])
+    test_data = torch.cat([gv_root, gp_root_rel[..., 3:]], dim=-1)
     
-    model_rtn.load_state_dict(torch.load("save/rtn.pth")["model"])
-    model_prtn.load_state_dict(torch.load("save/prtn.pth")["model"])
-    model_rtn.eval()
-    model_prtn.eval()
-
+    # load model
+    model = RTN(test_data.shape[-1]).to(device)
+    model.load_state_dict(torch.load("save/rtn.pth")["model"])
+    model.eval()
     with torch.no_grad():
-        for idx, (data, phase) in enumerate(tqdm(motion_loader, desc="Batch")):
-            data = (data - mean) / std
-            data = data.to(device)
-            phase = phase.to(device)
-
-            target_data = data[:, target_frame:target_frame+1, :]
-            target_phase = phase[:, target_frame:target_frame+1]
+        for idx in range(test_data.shape[0]):
+            data = test_data[idx:idx+1].to(device)
+            mean, std = data.mean(), data.std()
+            data = (data - mean) / (std + 1e-8)
 
             # network initialization
-            model_rtn.init_hidden(batch_size, data[:, 0:1, :])
-            model_rtn.set_target(target_data)
-            model_prtn.init_hidden(batch_size, data[:, 0:1, :], phase[:, 0:1])
-            model_prtn.set_target(target_data, target_phase)
+            model.init_hidden(1, data[:, 0, :])
+            model.set_target(data[:, target_frame, :])
 
             # RTN
-            pred_rtn = []
+            preds = []
             for f in range(0, target_frame):
-                input_data = data[:, f:f+1, :] if f < past_context else pred
-                pred = model_rtn(input_data)
-                pred_rtn.append(data[:, f:f+1, :] if f < past_context else pred)
-            pred_rtn = torch.cat(pred_rtn, dim=1)
-
-            # PhaseRTN
-            pred_prtn = []
-            for f in range(0, target_frame):
-                input_data = data[:, f:f+1, :] if f < past_context else pred
-                input_phase = phase[:, f:f+1] if f < past_context else input_phase + delta_phase
-                input_phase = torch.where(input_phase < 1, input_phase, input_phase - 1)
-
-                pred, delta_phase = model_prtn(input_data, input_phase)
-
-                pred_prtn.append(data[:, f:f+1, :] if f < past_context else pred)
-
-            pred_prtn = torch.cat(pred_prtn, dim=1)
+                input_data = data[:, f, :] if f < past_context else pred
+                pred = model(input_data)
+                preds.append(data[:, f+1, :] if f < past_context else pred)
+            preds = torch.stack(preds, dim=1) * std + mean
 
             # gt
-            gt = data[:, :target_frame, :]
+            gt = data[:, 1:target_frame+1, :] * std + mean
 
             # make animation to visualize
-            pred_rtn = tensor_to_numpy(pred_rtn[0], mean[:target_frame], std[:target_frame])
-            pred_prtn = tensor_to_numpy(pred_prtn[0], mean[:target_frame], std[:target_frame])
-            gt = tensor_to_numpy(gt[0], mean[:target_frame], std[:target_frame])
+            pred_rtn = tensor_to_numpy(preds[0])
+            gt = tensor_to_numpy(gt[0])
 
             ########## ground truth motion ##########
             def get_root_pos(data):
-                start_root_pos = motion.get_global_root_pos()[idx * batch_size, 0:1]
-                root_pos_delta = np.cumsum(data[:, 0:1, :], axis=0)
+                start_root_pos = gp_root[idx, 0:1].numpy()
+                root_pos_delta = np.cumsum(data[:, 0:1, :] / target_fps, axis=0)
                 root_pos = start_root_pos + root_pos_delta
 
                 joint_pos = data[:, 1:]
@@ -99,11 +77,13 @@ if __name__ == "__main__":
 
             gt_anim = get_root_pos(gt)
             rtn_anim = get_root_pos(pred_rtn)
-            prtn_anim = get_root_pos(pred_prtn)
             
             # correction = gt_anim[-1] - pred_anim[-1]
             # for frame in range(past_context, target_frame):
             #     t = 1 - (target_frame - frame) / (past_context - target_frame)
             #     pred_anim[frame] += t * correction
             
-            display(rtn_anim, motion.parents(), gt=prtn_anim, fps=30)
+            display(rtn_anim, test_dset.parents, gt=gt_anim, fps=30, bone_radius=0.5, eye=(0, 50, 125))
+            message = input("Type 'q' to quit: ")
+            if message == "q":
+                break
