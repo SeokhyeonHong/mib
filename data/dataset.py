@@ -79,7 +79,8 @@ class MotionDataset(Dataset):
             num_windows.append(windows)
         
         # convert to tensor
-        X = torch.stack(X, dim=0)
+        X = torch.stack(X, dim=0).float()
+        # print(X.shape)
         X = X.view(X.shape[0], X.shape[1], -1).float()
 
         # check whether the parents are same

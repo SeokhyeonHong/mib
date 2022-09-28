@@ -66,7 +66,7 @@ if __name__ == "__main__":
             gt = tensor_to_numpy(gt[0])
 
             ########## ground truth motion ##########
-            def get_root_pos(data):
+            def get_joint_pos(data):
                 start_root_pos = gp_root[idx, 0:1].numpy()
                 root_pos_delta = np.cumsum(data[:, 0:1, :] / target_fps, axis=0)
                 root_pos = start_root_pos + root_pos_delta
@@ -75,8 +75,8 @@ if __name__ == "__main__":
                 anim = np.concatenate([root_pos, joint_pos+root_pos], axis=1)
                 return anim
 
-            gt_anim = get_root_pos(gt)
-            rtn_anim = get_root_pos(pred_rtn)
+            gt_anim = get_joint_pos(gt)
+            rtn_anim = get_joint_pos(pred_rtn)
             
             # correction = gt_anim[-1] - pred_anim[-1]
             # for frame in range(past_context, target_frame):

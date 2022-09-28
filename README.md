@@ -6,9 +6,9 @@ This repository contains PyTorch implementations of motion in-betweening papers.
 * Robust Motion In-betweening [[Paper]](https://arxiv.org/abs/2102.04942) [Code (Coming soon)]
 
 ## Motion features
-We first extract the motion features from `.bvh` files and store them in a `.pkl` file.
+We first extract the motion features from `.bvh` files and store them in a `.pkl` file in a key-value data structure.
 
-After then, you can extract the motion features to use in the network by using predefined keys and sliding window parameters `window_size` and `offset`.
+After then, you can extract the motion features by using predefined keys and sliding window parameters `window_size` and `offset`.
 
 The keys are:
 ```
@@ -22,7 +22,6 @@ local_euler: local joint rotation in Euler angles (degrees)
 local_quat: local joint rotation in quaternion
 phase: labelled phase features
 ```
-To use labelled phase features, you should add `.phase` files within the same directory of `.bvh` files.
 
 ### Example code
 ```python
@@ -30,6 +29,12 @@ from data.dataset import MotionDataset
 train_dset = MotionDataset(path, train, window, offset, phase, target_fps)
 train_data = train_dset.extract_features("local_quat")
 ```
+
+We also provide phase-functioned encoders and decoders through `PhaseMLP` in [here](model/base_model.py), which are originally from the paper [Phase-Functioned Neural Networks for Character Control](https://dl.acm.org/doi/abs/10.1145/3072959.3073663).
+
+To use labelled phase features, you should add `.phase` files within the same directory of `.bvh` files.
+
+`PhaseRTN` and `PhaseRMIB` use phase-functioned MLPs for their encoders and decoders.
 
 ## Training
 You can train the network by using a simple command:

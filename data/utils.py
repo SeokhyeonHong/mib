@@ -1,3 +1,4 @@
+from turtle import forward
 import torch
 import numpy as np
 
@@ -5,26 +6,16 @@ import numpy as np
 # PyTorch version #
 ###################
 def length_torch(x, dim=-1, keepdim=True):
-    """
-    :params x: tensor of shape (batch x seq x joints x 4)
-    """
-    assert x.shape[-1] == 4
-    
     res = torch.sqrt(torch.sum(x * x, dim=dim, keepdim=keepdim))
     return res
 
 def normalize_torch(x, dim=-1, eps=1e-8):
-    """
-    :params x: tensor of shape (batch x seq x joints x 4)
-    """
-    assert x.shape[-1] == 4
-    
     res = x / (length_torch(x, dim=dim) + eps)
     return res
 
 def quat_normalize_torch(x, eps=1e-8):
     """
-    :params x: tensor of shape (batch x seq x joints x 4)
+    :params x: tensor of shape (... x joints x 4)
     """
     assert x.shape[-1] == 4
     
@@ -33,15 +24,15 @@ def quat_normalize_torch(x, eps=1e-8):
 
 def quat_fk_torch(lq, gp_root, offset, parents):
     """
-    :params lq: local quaternion of joints (batch x seq x joints x 4)
-    :params gp_root: global position of root joint (batch x seq x 1 x 3)
-    :params offset: offset of joints (batch x seq x joints x 3)
+    :params lq: local quaternion of joints (... x joints x 4)
+    :params gp_root: global position of root joint (... x 1 x 3)
+    :params offset: offset of joints (... x joints x 3)
     :param parents: parent indices of each joint (joints)
     """
     assert lq.shape[-1] == 4 and gp_root.shape[-1] == 3 and offset.shape[-1] == 3
 
     gp, gr = [gp_root], [lq[..., :1, :]]
-    for i in range(1, parents.shape[-1]):
+    for i in range(1, len(parents)):
         gp.append(quat_mul_vec_torch(gr[parents[i]], offset[..., i:i+1, :]) + gp[parents[i]])
         gr.append(quat_mul_torch    (gr[parents[i]], lq[..., i:i+1, :]))
 
@@ -49,7 +40,12 @@ def quat_fk_torch(lq, gp_root, offset, parents):
     return res
 
 def quat_mul_torch(x, y):
+    """
+    :params x: tensor of shape (... x joints x 4)
+    :params y: tensor of shape (... x joints x 4)
+    """
     assert x.shape[-1] == 4 and y.shape[-1] == 4
+    
     x0, x1, x2, x3 = x[..., 0:1], x[..., 1:2], x[..., 2:3], x[..., 3:4]
     y0, y1, y2, y3 = y[..., 0:1], y[..., 1:2], y[..., 2:3], y[..., 3:4]
 
@@ -62,18 +58,54 @@ def quat_mul_torch(x, y):
     return res
 
 def quat_mul_vec_torch(q, x):
+    """
+    :params q: tensor of shape (... x joints x 4)
+    :params x: tensor of shape (... x joints x 3)
+    """
     t = 2.0 * torch.cross(q[..., 1:], x)
     res = x + q[..., 0][..., None] * t + torch.cross(q[..., 1:], t)
     return res
 
 def quat_inv_torch(q):
+    """
+    :params q: tensor of shape (... x joints x 4)
+    """
     assert q.shape[-1] == 4
-    res = torch.asarray([1, -1, -1, -1], dtype=torch.float32) * q
+    res = torch.asarray([1, -1, -1, -1], dtype=torch.float32, device=q.device) * q
     return res
     
-################################
-# NumPy version (from Ubisoft) #
-################################
+def delta_rotate_at_frame_torch(lq, frame):
+    """
+    :param lq: local quaternion of joints (batch x sequence x joints x 4)
+    :param frame: frame index
+    :param joint: joint index
+    :param quat: quaternion to apply
+    :return: The rotated joint
+    """
+    key_q = lq[:, frame-1:frame, 0:1, :]
+    forward = torch.tensor([1, 0, 1], dtype=torch.float32, device=lq.device)[None, None, None, :]\
+            * quat_mul_vec_torch(key_q, torch.tensor([0, 1, 0], dtype=torch.float32, device=lq.device)[None, None, None, :])
+    forward = normalize_torch(forward)
+    yrot = quat_normalize_torch(quat_between_torch(torch.tensor([1, 0, 0], dtype=torch.float32, device=lq.device)[None, None, None, :], forward))
+    return quat_inv_torch(yrot)
+
+def quat_between_torch(x, y):
+    """
+    Quaternion rotations between two 3D-vector arrays
+
+    :param x: tensor of 3D vectors
+    :param y: tensor of 3D vetcors
+    :return: tensor of quaternions
+    """
+    res = torch.cat([
+        torch.sqrt(torch.sum(x * x, dim=-1) * torch.sum(y * y, dim=-1))[..., None] +
+        torch.sum(x * y, dim=-1)[..., None],
+        torch.cross(x, y)], dim=-1)
+    return res
+
+########################################################################################################
+# NumPy version from Ubisoft's code (https://github.com/ubisoft/ubisoft-laforge-animation-dataset.git) #
+########################################################################################################
 def length(x, axis=-1, keepdims=True):
     """
     Computes vector norm along a tensor axis(axes)
