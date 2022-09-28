@@ -8,6 +8,8 @@ def length_torch(x, dim=-1, keepdim=True):
     """
     :params x: tensor of shape (batch x seq x joints x 4)
     """
+    assert x.shape[-1] == 4
+    
     res = torch.sqrt(torch.sum(x * x, dim=dim, keepdim=keepdim))
     return res
 
@@ -15,6 +17,8 @@ def normalize_torch(x, dim=-1, eps=1e-8):
     """
     :params x: tensor of shape (batch x seq x joints x 4)
     """
+    assert x.shape[-1] == 4
+    
     res = x / (length_torch(x, dim=dim) + eps)
     return res
 
@@ -22,19 +26,30 @@ def quat_normalize_torch(x, eps=1e-8):
     """
     :params x: tensor of shape (batch x seq x joints x 4)
     """
+    assert x.shape[-1] == 4
+    
     res = normalize_torch(x, eps=eps)
     return res
 
-def quat_fk_torch(lrot, lpos, parents):
-    gp, gr = [lpos[..., :1, :]], [lrot[..., :1, :]]
-    for i in range(1, len(parents)):
-        gp.append(quat_mul_vec_torch(gr[parents[i]], lpos[..., i:i+1, :]) + gp[parents[i]])
-        gr.append(quat_mul_torch    (gr[parents[i]], lrot[..., i:i+1, :]))
+def quat_fk_torch(lq, gp_root, offset, parents):
+    """
+    :params lq: local quaternion of joints (batch x seq x joints x 4)
+    :params gp_root: global position of root joint (batch x seq x 1 x 3)
+    :params offset: offset of joints (batch x seq x joints x 3)
+    :param parents: parent indices of each joint (joints)
+    """
+    assert lq.shape[-1] == 4 and gp_root.shape[-1] == 3 and offset.shape[-1] == 3
+
+    gp, gr = [gp_root], [lq[..., :1, :]]
+    for i in range(1, parents.shape[-1]):
+        gp.append(quat_mul_vec_torch(gr[parents[i]], offset[..., i:i+1, :]) + gp[parents[i]])
+        gr.append(quat_mul_torch    (gr[parents[i]], lq[..., i:i+1, :]))
 
     res = torch.cat(gr, dim=-2), torch.cat(gp, dim=-2)
     return res
 
 def quat_mul_torch(x, y):
+    assert x.shape[-1] == 4 and y.shape[-1] == 4
     x0, x1, x2, x3 = x[..., 0:1], x[..., 1:2], x[..., 2:3], x[..., 3:4]
     y0, y1, y2, y3 = y[..., 0:1], y[..., 1:2], y[..., 2:3], y[..., 3:4]
 
@@ -52,12 +67,13 @@ def quat_mul_vec_torch(q, x):
     return res
 
 def quat_inv_torch(q):
+    assert q.shape[-1] == 4
     res = torch.asarray([1, -1, -1, -1], dtype=torch.float32) * q
     return res
     
-#################
-# NumPy version #
-#################
+################################
+# NumPy version (from Ubisoft) #
+################################
 def length(x, axis=-1, keepdims=True):
     """
     Computes vector norm along a tensor axis(axes)
@@ -370,7 +386,7 @@ def extract_feet_contacts(pos, lfoot_idx, rfoot_idx, velfactor=0.02):
     contacts_r = (np.sum(rfoot_xyz, axis=-1) < velfactor)
 
     # Duplicate the last frame for shape consistency
-    contacts_l = np.concatenate([contacts_l, contacts_l[-1:]], axis=0)
-    contacts_r = np.concatenate([contacts_r, contacts_r[-1:]], axis=0)
+    # contacts_l = np.concatenate([contacts_l, contacts_l[-1:]], axis=0)
+    # contacts_r = np.concatenate([contacts_r, contacts_r[-1:]], axis=0)
 
     return contacts_l, contacts_r

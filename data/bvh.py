@@ -241,17 +241,20 @@ def get_data_dict(path, phase=False, target_fps=30):
             global_root_p = global_p[:, 0:1]
             global_root_q = global_q[:, 0:1]
             local_p = utils.quat_mul_vec(utils.quat_inv(global_root_q), global_p - global_root_p)
-            
+            contacts_l, contacts_r = utils.extract_feet_contacts(global_p, [3, 4], [7, 8], velfactor=0.02)
+
             # features
             features = {
-                "offset": anim.offsets,
+                "offset": np.tile(anim.offsets, (global_p.shape[0] - 1, 1, 1)),
                 "parents": anim.parents,
                 "global_pos": global_p[1:],
                 "global_vel": (global_p[1:] - global_p[:-1]) * target_fps,
                 "local_pos": local_p[1:],
                 "local_vel": (local_p[1:] - local_p[:-1]) * target_fps,
                 "local_euler": rot[1:],
-                "local_quat": quats[1:]
+                "local_quat": quats[1:],
+                "contacts_l": contacts_l,
+                "contacts_r": contacts_r,
             }
             if phase:
                 features["phase"] = phase_data[1:]
@@ -259,24 +262,3 @@ def get_data_dict(path, phase=False, target_fps=30):
             seq_features.append(features)
 
     return seq_features
-
-def get_train_stats(bvh_folder, train_set):
-    """
-    Extract the same training set as in the paper in order to compute the normalizing statistics
-    :return: Tuple of (local position mean vector, local position standard deviation vector, local joint offsets tensor)
-    """
-    print('Building the train set...')
-    xtrain, qtrain, parents, _, _ = get_lafan1_set(bvh_folder, train_set, window=50, offset=20)
-
-    print('Computing stats...\n')
-    # Joint offsets : are constant, so just take the first frame:
-    offsets = xtrain[0:1, 0:1, 1:, :]  # Shape : (1, 1, J, 3)
-
-    # Global representation:
-    q_glbl, x_glbl = utils.quat_fk(qtrain, xtrain, parents)
-
-    # Global positions stats:
-    x_mean = np.mean(x_glbl.reshape([x_glbl.shape[0], x_glbl.shape[1], -1]).transpose([0, 2, 1]), axis=(0, 2), keepdims=True)
-    x_std = np.std(x_glbl.reshape([x_glbl.shape[0], x_glbl.shape[1], -1]).transpose([0, 2, 1]), axis=(0, 2), keepdims=True)
-
-    return x_mean, x_std, offsets

@@ -58,6 +58,9 @@ class MotionDataset(Dataset):
         for seq in self.seq_features:
             if key in seq:
                 feature = seq[key]
+                if key == "parents":
+                    X.append(torch.from_numpy(feature))
+                    continue
             elif key.endswith("_root"):
                 feature = seq[key[:-5]][:, 0:1, :]
             elif key.endswith("_noroot"):
@@ -79,7 +82,14 @@ class MotionDataset(Dataset):
         X = torch.stack(X, dim=0)
         X = X.view(X.shape[0], X.shape[1], -1).float()
 
-        self.num_windows = num_windows
+        # check whether the parents are same
+        if key == "parents":
+            assert torch.all(torch.eq(X[0], X[1:]))
+            X = X[0].view(-1).long()
+
+        if not hasattr(self, "num_windows"):
+            self.num_windows = num_windows
+
         return X
 
     def __len__(self):
