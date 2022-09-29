@@ -133,7 +133,7 @@ def read_bvh(filename, order=None):
             i += 1
 
     f.close()
-
+    
     return Anim(rotations, positions, offsets, parents, names, order, fps)
 
 def read_phase(filename):
@@ -241,7 +241,11 @@ def get_data_dict(path, phase=False, target_fps=30):
             global_root_p = global_p[:, 0:1]
             global_root_q = global_q[:, 0:1]
             local_p = utils.quat_mul_vec(utils.quat_inv(global_root_q), global_p - global_root_p)
-            contacts_l, contacts_r = utils.extract_feet_contacts(global_p, [3, 4], [7, 8], velfactor=0.02)
+
+            # NOTE: LaFAN1 foot contact labels: [3, 4], [7, 8]
+            # NOTE: PFNN foot contact labels: 
+            # contacts_l, contacts_r = utils.extract_feet_contacts(global_p, [3, 4], [7, 8], velfactor=0.02 * (anim.fps / target_fps))
+            contacts_l, contacts_r = utils.extract_feet_contacts(global_p, [4, 5], [9, 10], velfactor=0.01 * (anim.fps / target_fps))
 
             # features
             features = {

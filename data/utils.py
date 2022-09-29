@@ -45,7 +45,7 @@ def quat_mul_torch(x, y):
     :params y: tensor of shape (... x joints x 4)
     """
     assert x.shape[-1] == 4 and y.shape[-1] == 4
-    
+
     x0, x1, x2, x3 = x[..., 0:1], x[..., 1:2], x[..., 2:3], x[..., 3:4]
     y0, y1, y2, y3 = y[..., 0:1], y[..., 1:2], y[..., 2:3], y[..., 3:4]
 

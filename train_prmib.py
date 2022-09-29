@@ -6,13 +6,13 @@ from tqdm import tqdm
 import random
 
 from data.dataset import MotionDataset
-from model.rmib import RMIB, Discriminator
+from model.rmib import PhaseRMIB, Discriminator
 import data.utils as utils
 
 # training parameters
 epochs = 100
 lr = 1e-3
-batch_size = 256
+batch_size = 64
 
 # RMIB parameters
 max_transition = 30
@@ -27,7 +27,7 @@ target_fps = 30
 
 # dataset
 device = "cuda" if torch.cuda.is_available() else "cpu"
-train_dset = MotionDataset("D:/data/LaFAN1", train=True, window=window_size, offset=offset, phase=False, target_fps=target_fps)
+train_dset = MotionDataset("D:/data/PFNN", train=True, window=window_size, offset=offset, phase=True, target_fps=target_fps)
 
 if __name__ == "__main__":
     seed = 777
@@ -43,6 +43,7 @@ if __name__ == "__main__":
     global_pos = train_dset.extract_features("global_pos")
     parents = train_dset.extract_features("parents")
     offset = train_dset.extract_features("offset").reshape(local_quat.shape[0], local_quat.shape[1], -1, 3)
+    phase = train_dset.extract_features("phase").squeeze(-1)
 
     # data augmentation (rotate according to the 10th frame)
     local_quat = local_quat.reshape(local_quat.shape[0], local_quat.shape[1], -1, 4)
@@ -67,7 +68,7 @@ if __name__ == "__main__":
     }
     num_batch = local_quat.shape[0] // batch_size
 
-    generator = RMIB(dof=local_quat.shape[-1] + global_vel_root.shape[-1] + contacts.shape[-1],
+    generator = PhaseRMIB(dof=local_quat.shape[-1] + global_vel_root.shape[-1] + contacts.shape[-1],
                 input_dims=input_dims,
                 device=device).to(device)
     discriminator_short = Discriminator(
@@ -83,12 +84,13 @@ if __name__ == "__main__":
         lr=lr,
         betas=(0.5, 0.9)
     )
-    writer = SummaryWriter("log/RMIB")
+    writer = SummaryWriter("log/PhaseRMIB")
 
     # training loop
     for epoch in range(1, epochs+1):
         loss_sum = 0
         loss_lq_sum, loss_gvr_sum, loss_gp_sum, loss_c_sum = 0, 0, 0, 0
+        loss_delta_p_sum = 0
         loss_adv_sum = 0
         train_idx = torch.randperm(local_quat.shape[0])
         for i in tqdm(range(num_batch), desc=f"Epoch {epoch}/{epochs}"):
@@ -97,27 +99,30 @@ if __name__ == "__main__":
             lq = local_quat[idx].to(device)
             gvr = global_vel_root[idx].to(device)
             c = contacts[idx].to(device)
+            p = phase[idx].to(device)
 
             # network initialization
             target_frame = past_context + random.randint(p_min, p_max)
             generator.init_hidden(batch_size)
-            generator.set_target([lq[:, target_frame, :], gvr[:, target_frame, :]])
+            generator.set_target([lq[:, target_frame, :], gvr[:, target_frame, :]], p[:, target_frame])
 
             # prediction
-            lq_preds, gvr_preds, c_preds = [], [], []
+            lq_preds, gvr_preds, c_preds, delta_phase_preds = [], [], [], []
             for f in range(0, target_frame):
                 if f < past_context:
-                    lq_pred, gvr_pred, c_pred = generator([lq[:, f, :], gvr[:, f, :], c[:, f, :]], target_frame -f)
+                    lq_pred, gvr_pred, c_pred, delta_phase_pred = generator([lq[:, f, :], gvr[:, f, :], c[:, f, :]], p[:, f], target_frame -f)
                 else:
-                    lq_pred, gvr_pred, c_pred = generator([lq_pred, gvr_pred, c_pred], target_frame - f)
+                    lq_pred, gvr_pred, c_pred, delta_phase_pred = generator([lq_pred, gvr_pred, c_pred], p[:, f], target_frame - f)
                 
                 lq_preds.append(lq_pred)
                 gvr_preds.append(gvr_pred)
                 c_preds.append(c_pred)
+                delta_phase_preds.append(delta_phase_pred)
 
             lq_preds = torch.stack(lq_preds, dim=1)
             gvr_preds = torch.stack(gvr_preds, dim=1)
             c_preds = torch.stack(c_preds, dim=1)
+            delta_phase_preds = torch.stack(delta_phase_preds, dim=1)
 
             # solve FK
             gp = global_pos[idx].to(device)
@@ -134,15 +139,21 @@ if __name__ == "__main__":
             loss_gp = 0.5 * F.l1_loss(gp_preds, gp[:, 1:target_frame+1, :])
             loss_c = 0.1 * F.l1_loss(c_preds, c[:, 1:target_frame+1, :])
 
+            # phase loss
+            delta_phase_gt = p[:, 1:target_frame+1] - p[:, 0:target_frame]
+            delta_phase_gt = torch.where(delta_phase_gt < 0, delta_phase_gt + 1, delta_phase_gt)
+            loss_delta_p = F.l1_loss(delta_phase_preds, delta_phase_gt)
+
             # update generator
             generator_optimizer.zero_grad()
-            loss = loss_lq + loss_gvr + loss_gp + loss_c
+            loss = loss_lq + loss_gvr + loss_gp + loss_c + loss_delta_p
             loss.backward()
             loss_sum += loss.item()
             loss_lq_sum += loss_lq.item()
             loss_gvr_sum += loss_gvr.item()
             loss_gp_sum += loss_gp.item()
             loss_c_sum += loss_c.item()
+            loss_delta_p_sum += loss_delta_p.item()
             generator_optimizer.step()
 
             # adversarial loss
@@ -188,13 +199,14 @@ if __name__ == "__main__":
             discriminator_optimizer.step()
 
         # log
-        print(f"Epoch {epoch} loss: {(loss_sum / num_batch):.4f} quat loss: {(loss_lq_sum / num_batch):.4f} vel loss: {(loss_gvr_sum / num_batch):.4f} pos loss: {(loss_gp_sum / num_batch):.4f} contact loss: {(loss_c_sum / num_batch):.4f} adv loss: {(loss_adv_sum / num_batch):.4f}")
+        print(f"Epoch {epoch} loss: {(loss_sum / num_batch):.4f} quat loss: {(loss_lq_sum / num_batch):.4f} vel loss: {(loss_gvr_sum / num_batch):.4f} pos loss: {(loss_gp_sum / num_batch):.4f} contact loss: {(loss_c_sum / num_batch):.4f} adv loss: {(loss_adv_sum / num_batch):.4f} phase loss: {(loss_delta_p_sum / num_batch):.4f}")
         writer.add_scalar("Loss/Total", loss_sum / num_batch, epoch)
         writer.add_scalar("Loss/Quat", loss_lq_sum / num_batch, epoch)
         writer.add_scalar("Loss/RootVel", loss_gvr_sum / num_batch, epoch)
         writer.add_scalar("Loss/Pos", loss_gp_sum / num_batch, epoch)
         writer.add_scalar("Loss/Contact", loss_c_sum / num_batch, epoch)
         writer.add_scalar("Loss/Adversarial", loss_adv_sum / num_batch, epoch)
+        writer.add_scalar("Loss/Phase", loss_delta_p_sum / num_batch, epoch)
 
         # curriculum learning
         if epoch % 20 == 0:
@@ -208,4 +220,4 @@ if __name__ == "__main__":
         "generator_optimizer": generator_optimizer.state_dict(),
         "discriminator_optimizer": discriminator_optimizer.state_dict(),
     }
-    torch.save(save_dict, "save/rmib.pth")
+    torch.save(save_dict, "save/prmib.pth")
