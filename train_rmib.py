@@ -12,7 +12,7 @@ import data.utils as utils
 # training parameters
 epochs = 100
 lr = 1e-3
-batch_size = 256
+batch_size = 32
 
 # RMIB parameters
 max_transition = 30

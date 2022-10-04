@@ -5,12 +5,8 @@ import numpy as np
 ###################
 # PyTorch version #
 ###################
-def length_torch(x, dim=-1, keepdim=True):
-    res = torch.sqrt(torch.sum(x * x, dim=dim, keepdim=keepdim))
-    return res
-
 def normalize_torch(x, dim=-1, eps=1e-8):
-    res = x / (length_torch(x, dim=dim) + eps)
+    res = x / (torch.linalg.norm(x, dim=dim, keepdim=True) + eps)
     return res
 
 def quat_normalize_torch(x, eps=1e-8):
