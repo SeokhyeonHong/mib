@@ -4,28 +4,29 @@ from data.dataset import MotionDataset
 from model.rmib import RMIB
 import data.utils as utils
 
-from vis.vis import display
+from vis.vis import display_with_keys
 import random
 
 # RMIB parameters
-total_frames = 50
+total_frames = 300
 past_context = 10
-target_frame = 40
+target_frames = [30, 60, 90, 120, 150, 180, 210, 240, 270, 299]
 
 # dataset parameters
-window_size = 50
-offset = 25
+window_size = 300
+offset = 150
 target_fps = 30
 
 # dataset
 device = "cuda" if torch.cuda.is_available() else "cpu"
 test_dset = MotionDataset("D:/data/LaFAN1", train=False, window=window_size, offset=offset, phase=False, target_fps=target_fps)
 
-def item(x):
-    return x.detach().cpu().numpy()
+def anim(x):
+    return x.detach().cpu().reshape(x.shape[0], -1, 3).numpy()
 
 if __name__ == "__main__":
     seed = 777
+    random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
@@ -73,22 +74,34 @@ if __name__ == "__main__":
             gvr = global_vel_root[i:i+1].to(device)
             c = contacts[i:i+1].to(device)
 
-            # network initialization
-            target_frame = 40
-            model.init_hidden(1)
-            model.set_target([lq[:, target_frame, :], gvr[:, target_frame, :]])
-
-            # prediction
             lq_preds, gvr_preds, c_preds = [], [], []
-            for f in range(0, target_frame):
-                if f < past_context:
-                    lq_pred, gvr_pred, c_pred = model([lq[:, f, :], gvr[:, f, :], c[:, f, :]], target_frame -f)
+            for t_idx, t_frame in enumerate(target_frames):
+                model.init_hidden(1)
+                model.set_target([lq[:, t_frame, :], gvr[:, t_frame, :]])
+
+                # prediction
+                if t_idx == 0:
+                    for f in range(0, past_context):
+                        lq_pred, gvr_pred, c_pred = model([lq[:, f, :], gvr[:, f, :], c[:, f, :]], t_frame -f)
+                        lq_preds.append(lq[:, f+1, :])
+                        gvr_preds.append(gvr[:, f+1, :])
+                        c_preds.append(c[:, f+1, :])
+                    for f in range(past_context, t_frame):
+                        lq_pred, gvr_pred, c_pred = model([lq_pred, gvr_pred, c_pred], t_frame - f)
+                        lq_preds.append(lq_pred)
+                        gvr_preds.append(gvr_pred)
+                        c_preds.append(c_pred)
                 else:
-                    lq_pred, gvr_pred, c_pred = model([lq_pred, gvr_pred, c_pred], target_frame - f)
-                
-                lq_preds.append(lq_pred)
-                gvr_preds.append(gvr_pred)
-                c_preds.append(c_pred)
+                    for f in range(-past_context, 0):
+                        lq_pred_norm = utils.quat_normalize_torch(lq_preds[f].reshape(-1, 4))
+                        lq_pred, gvr_pred, c_pred = model([lq_pred_norm.reshape(1, -1),
+                                        gvr_preds[f],
+                                        (c_preds[f] > 0.9).float()], t_frame - target_frames[t_idx-1] - f)
+                    for f in range(0, t_frame - target_frames[t_idx-1]):
+                        lq_pred, gvr_pred, c_pred = model([lq_pred, gvr_pred, c_pred], t_frame - target_frames[t_idx-1] - f)
+                        lq_preds.append(lq_pred)
+                        gvr_preds.append(gvr_pred)
+                        c_preds.append(c_pred)
 
             lq_preds = torch.stack(lq_preds, dim=1)
             gvr_preds = torch.stack(gvr_preds, dim=1)
@@ -99,14 +112,15 @@ if __name__ == "__main__":
             gpr_preds = gp[:, 0:1, :3] + torch.cumsum(gvr_preds, dim=1)
             _, gp_preds = utils.quat_fk_torch(utils.quat_normalize_torch(lq_preds.reshape(*lq_preds.shape[:2], -1, 4)),
                                               gpr_preds.reshape(*gpr_preds.shape[:2], -1, 3),
-                                              offset[i:i+1][:, 1:target_frame+1].to(device),
+                                              offset[i:i+1][:, :target_frames[-1]].to(device),
                                               parents)
 
             gp_preds = gp_preds.reshape(*gp_preds.shape[:2], -1)
 
-            pred_anim = item(gp_preds[0]).reshape(-1, 22, 3)
-            gt_anim = item(gp).reshape(-1, 22, 3)
-            display(pred_anim, parents.numpy(), gt=None)
+            pred_anim = anim(gp_preds[0])
+            gt_anim = anim(gp[0])
+            key_anim = gt_anim[target_frames]
+            display_with_keys(pred_anim, parents, key_anim, target_frames, gt=gt_anim)#, save_gif=True, gif_name="save/RMIB.gif")
 
             answer = input("Enter 'q' to quit: ")
             if answer == "q":

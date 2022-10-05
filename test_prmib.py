@@ -4,25 +4,25 @@ from data.dataset import MotionDataset
 from model.rmib import PhaseRMIB
 import data.utils as utils
 
-from vis.vis import display
+from vis.vis import display_with_keys
 import random
 
 # RMIB parameters
 total_frames = 50
 past_context = 10
-target_frame = 40
+target_frames = [30, 60, 90, 120, 150, 180, 210, 240, 270, 299]
 
 # dataset parameters
-window_size = 50
-offset = 25
+window_size = 300
+offset = 150
 target_fps = 30
 
 # dataset
 device = "cuda" if torch.cuda.is_available() else "cpu"
 test_dset = MotionDataset("D:/data/PFNN", train=False, window=window_size, offset=offset, phase=True, target_fps=target_fps)
 
-def item(x):
-    return x.detach().cpu().numpy()
+def anim(x):
+    return x.detach().cpu().reshape(x.shape[0], -1, 3).numpy()
 
 if __name__ == "__main__":
     seed = 777
@@ -62,12 +62,12 @@ if __name__ == "__main__":
         "target_encoder": local_quat.shape[-1],
     }
 
-    generator = PhaseRMIB(dof=local_quat.shape[-1] + global_vel_root.shape[-1] + contacts.shape[-1],
+    model = PhaseRMIB(dof=local_quat.shape[-1] + global_vel_root.shape[-1] + contacts.shape[-1],
                 input_dims=input_dims,
                 device=device).to(device)
-    generator.load_state_dict(torch.load("save/prmib.pth")["generator"])
+    model.load_state_dict(torch.load("save/prmib.pth")["generator"])
     
-    generator.eval()
+    model.eval()
     with torch.no_grad():
         while True:
             i = random.randint(0, local_quat.shape[0] - 1)
@@ -77,28 +77,46 @@ if __name__ == "__main__":
             c = contacts[i:i+1].to(device)
             p = phase[i:i+1].to(device)
 
-            # network initialization
-            target_frame = 40
-            generator.init_hidden(1)
-            generator.set_target([lq[:, target_frame, :], gvr[:, target_frame, :]], p[:, target_frame])
+            lq_preds, gvr_preds, c_preds, phase_preds = [], [], [], []
+            curr_phase = p[:, 0]
+            for t_idx, t_frame in enumerate(target_frames):
+                model.init_hidden(1)
+                model.set_target([lq[:, t_frame, :], gvr[:, t_frame, :]], p[:, t_frame])
 
-            # prediction
-            lq_preds, gvr_preds, c_preds = [], [], []
-            input_phase = p[:, 0]
-            for f in range(0, target_frame):
-                if f < past_context:
-                    lq_pred, gvr_pred, c_pred, delta_phase_pred = generator([lq[:, f, :], gvr[:, f, :], c[:, f, :]], input_phase, target_frame -f)
-                    lq_preds.append(lq[:, f+1, :])
-                    gvr_preds.append(gvr[:, f+1, :])
-                    c_preds.append(c[:, f+1, :])
-                    input_phase = p[:, f+1]
+                # prediction
+                if t_idx == 0:
+                    for f in range(0, past_context):
+                        lq_pred, gvr_pred, c_pred, delta_phase_pred = model([lq[:, f, :], gvr[:, f, :], c[:, f, :]], p[:, f], t_frame -f)
+                        lq_preds.append(lq[:, f+1, :])
+                        gvr_preds.append(gvr[:, f+1, :])
+                        c_preds.append(c[:, f+1, :])
+                        phase_preds.append(p[:, f+1])
+                        curr_phase += delta_phase_pred
+                        curr_phase = torch.where(curr_phase >= 1, curr_phase - 1, curr_phase)
+                    for f in range(past_context, t_frame):
+                        lq_pred, gvr_pred, c_pred, delta_phase_pred = model([lq_pred, gvr_pred, c_pred], curr_phase, t_frame - f)
+                        lq_preds.append(lq_pred)
+                        gvr_preds.append(gvr_pred)
+                        c_preds.append(c_pred)
+
+                        curr_phase += delta_phase_pred
+                        curr_phase = torch.where(curr_phase >= 1, curr_phase - 1, curr_phase)
+                        phase_preds.append(curr_phase)
                 else:
-                    lq_pred, gvr_pred, c_pred, delta_phase_pred = generator([lq_pred, gvr_pred, c_pred], input_phase, target_frame - f)
-                    lq_preds.append(lq_pred)
-                    gvr_preds.append(gvr_pred)
-                    c_preds.append(c_pred)
-                    input_phase = input_phase + delta_phase_pred
-                    input_phase = torch.where(input_phase >= 1, input_phase - 1, input_phase)
+                    for f in range(-past_context, 0):
+                        lq_pred_norm = utils.quat_normalize_torch(lq_preds[f].reshape(-1, 4))
+                        lq_pred, gvr_pred, c_pred, delta_phase_pred = model([lq_pred_norm.reshape(1, -1),
+                                                                            gvr_preds[f],
+                                                                            (c_preds[f] > 0.9).float()], phase_preds[f], t_frame - target_frames[t_idx-1] - f)
+                    for f in range(0, t_frame - target_frames[t_idx-1]):
+                        lq_pred, gvr_pred, c_pred, delta_phase_pred = model([lq_pred, gvr_pred, c_pred], curr_phase, t_frame - target_frames[t_idx-1] - f)
+                        lq_preds.append(lq_pred)
+                        gvr_preds.append(gvr_pred)
+                        c_preds.append(c_pred)
+
+                        curr_phase += delta_phase_pred
+                        curr_phase = torch.where(curr_phase >= 1, curr_phase - 1, curr_phase)
+                        phase_preds.append(curr_phase)
 
             lq_preds = torch.stack(lq_preds, dim=1)
             gvr_preds = torch.stack(gvr_preds, dim=1)
@@ -109,14 +127,15 @@ if __name__ == "__main__":
             gpr_preds = gp[:, 0:1, :3] + torch.cumsum(gvr_preds, dim=1)
             _, gp_preds = utils.quat_fk_torch(utils.quat_normalize_torch(lq_preds.reshape(*lq_preds.shape[:2], -1, 4)),
                                               gpr_preds.reshape(*gpr_preds.shape[:2], -1, 3),
-                                              offset[i:i+1][:, 1:target_frame+1].to(device),
+                                              offset[i:i+1][:, :target_frames[-1]].to(device),
                                               parents)
 
             gp_preds = gp_preds.reshape(*gp_preds.shape[:2], -1)
 
-            pred_anim = item(gp_preds[0]).reshape(gp_preds[0].shape[0], -1, 3)
-            gt_anim = item(gp[0]).reshape(gp[0].shape[0], -1, 3)
-            display(pred_anim, parents.numpy(), gt=gt_anim, eye=(0, 50, 125), bone_radius=0.3)
+            pred_anim = anim(gp_preds[0])
+            gt_anim = anim(gp[0])
+            key_anim = gt_anim[target_frames]
+            display_with_keys(pred_anim, parents, key_anim, target_frames, gt=gt_anim, bone_radius=0.3, eye=(0, 50, 125))#, save_gif=True, gif_name="save/PhaseRMIB.gif")
 
             answer = input("Enter 'q' to quit: ")
             if answer == "q":
