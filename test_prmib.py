@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from data.dataset import MotionDataset
 from model.rmib import PhaseRMIB
-import data.utils as utils
+import data.torch_quat as quat
 
 from vis.vis import display_with_keys
 import random
@@ -45,11 +45,11 @@ if __name__ == "__main__":
     global_vel_root = global_vel_root.reshape(global_vel_root.shape[0], global_vel_root.shape[1], -1, 3)
     global_pos = global_pos.reshape(global_pos.shape[0], global_pos.shape[1], -1, 3)
 
-    delta_quat = utils.delta_rotate_at_frame_torch(local_quat, 10)
+    delta_quat = quat.delta_rotate_at_frame(local_quat, 10)
     
-    local_quat[..., 0:1, :] = utils.quat_mul_torch(delta_quat, local_quat[..., 0:1, :])
-    global_vel_root = utils.quat_mul_vec_torch(delta_quat, global_vel_root)
-    global_pos = utils.quat_mul_vec_torch(delta_quat, global_pos)
+    local_quat[..., 0:1, :] = quat.quat_mul(delta_quat, local_quat[..., 0:1, :])
+    global_vel_root = quat.quat_mul_vec(delta_quat, global_vel_root)
+    global_pos = quat.quat_mul_vec(delta_quat, global_pos)
     
     local_quat = local_quat.reshape(local_quat.shape[0], local_quat.shape[1], -1)
     global_vel_root = global_vel_root.reshape(global_vel_root.shape[0], global_vel_root.shape[1], -1)
@@ -104,7 +104,7 @@ if __name__ == "__main__":
                         phase_preds.append(curr_phase)
                 else:
                     for f in range(-past_context, 0):
-                        lq_pred_norm = utils.quat_normalize_torch(lq_preds[f].reshape(-1, 4))
+                        lq_pred_norm = quat.quat_normalize_torch(lq_preds[f].reshape(-1, 4))
                         lq_pred, gvr_pred, c_pred, delta_phase_pred = model([lq_pred_norm.reshape(1, -1),
                                                                             gvr_preds[f],
                                                                             (c_preds[f] > 0.9).float()], phase_preds[f], t_frame - target_frames[t_idx-1] - f)
@@ -125,7 +125,7 @@ if __name__ == "__main__":
             # solve FK
             gp = global_pos[i:i+1].to(device)
             gpr_preds = gp[:, 0:1, :3] + torch.cumsum(gvr_preds, dim=1)
-            _, gp_preds = utils.quat_fk_torch(utils.quat_normalize_torch(lq_preds.reshape(*lq_preds.shape[:2], -1, 4)),
+            _, gp_preds = quat.quat_fk(quat.quat_normalize(lq_preds.reshape(*lq_preds.shape[:2], -1, 4)),
                                               gpr_preds.reshape(*gpr_preds.shape[:2], -1, 3),
                                               offset[i:i+1][:, :target_frames[-1]].to(device),
                                               parents)

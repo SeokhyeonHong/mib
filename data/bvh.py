@@ -1,6 +1,6 @@
 import re, os, ntpath
 import numpy as np
-from . import utils
+from . import np_utils as npu
 
 channelmap = {
     'Xrotation': 'x',
@@ -186,9 +186,9 @@ def get_lafan1_set(bvh_path, actors, window=50, offset=20):
                 # Sliding windows
                 i = 0
                 while i+window < anim.pos.shape[0]:
-                    q, x = utils.quat_fk(anim.quats[i: i+window], anim.pos[i: i+window], anim.parents)
+                    q, x = npu.quat_fk(anim.quats[i: i+window], anim.pos[i: i+window], anim.parents)
                     # Extract contacts
-                    c_l, c_r = utils.extract_feet_contacts(x, [3, 4], [7, 8], velfactor=0.02)
+                    c_l, c_r = npu.extract_feet_contacts(x, [3, 4], [7, 8], velfactor=0.02)
                     X.append(anim.pos[i: i+window])
                     Q.append(anim.quats[i: i+window])
                     seq_names.append(seq_name)
@@ -209,7 +209,7 @@ def get_lafan1_set(bvh_path, actors, window=50, offset=20):
     X[:, :, 0, 2] = X[:, :, 0, 2] - xzs[..., 1]
 
     # Unify facing on last seed frame
-    X, Q = utils.rotate_at_frame(X, Q, anim.parents, n_past=npast)
+    X, Q = npu.rotate_at_frame(X, Q, anim.parents, n_past=npast)
 
     return X, Q, anim.parents, contacts_l, contacts_r
 
@@ -235,17 +235,17 @@ def get_data_dict(path, phase=False, target_fps=30):
                 phase_data = read_phase(phase_path)[::step]
 
             # solve FK
-            quats = utils.euler_to_quat(np.radians(rot), order=anim.order)
-            quats = utils.remove_quat_discontinuities(quats)
-            global_q, global_p = utils.quat_fk(quats, pos, anim.parents)
+            quats = npu.euler_to_quat(np.radians(rot), order=anim.order)
+            quats = npu.remove_quat_discontinuities(quats)
+            global_q, global_p = npu.quat_fk(quats, pos, anim.parents)
             global_root_p = global_p[:, 0:1]
             global_root_q = global_q[:, 0:1]
-            local_p = utils.quat_mul_vec(utils.quat_inv(global_root_q), global_p - global_root_p)
+            local_p = npu.quat_mul_vec(npu.quat_inv(global_root_q), global_p - global_root_p)
 
             # NOTE: LaFAN1 foot contact labels: [3, 4], [7, 8]
             # NOTE: PFNN foot contact labels: 
-            # contacts_l, contacts_r = utils.extract_feet_contacts(global_p, [3, 4], [7, 8], velfactor=0.02 * (anim.fps / target_fps))
-            contacts_l, contacts_r = utils.extract_feet_contacts(global_p, [4, 5], [9, 10], velfactor=0.01 * (anim.fps / target_fps))
+            contacts_l, contacts_r = npu.extract_feet_contacts(global_p, [3, 4], [7, 8], velfactor=0.02 * (anim.fps / target_fps))
+            # contacts_l, contacts_r = npu.extract_feet_contacts(global_p, [4, 5], [9, 10], velfactor=0.01 * (anim.fps / target_fps))
 
             # features
             features = {

@@ -4,7 +4,6 @@ from torch.utils.data import Dataset
 import pickle
 
 from . import bvh
-from . import utils
 
 def process_pkl(pickle_name, dir_path, phase, target_fps):
     if not os.path.exists(os.path.join(dir_path, "pickle")):
