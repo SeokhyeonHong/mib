@@ -9,6 +9,9 @@ uniform mat4 M;
 uniform mat4 V;
 uniform mat4 P;
 
+uniform float far_plane;
+uniform sampler2D shadowMap;
+
 layout(location=4) uniform int colorMode;
 
 
@@ -29,6 +32,16 @@ struct Light {
 };
 uniform Light light;
 
+float shadow_calc(vec4 frag_pos)
+{
+    vec3 light_to_frag = frag_pos.xyz - light.position.xyz;
+    float depth = texture(shadowMap, light_to_frag.xy).r;
+    depth *= far_plane;
+
+    float bias = 0.05;
+    return (depth + bias) < length(light_to_frag) ? 0.0 : 1.0;
+}
+
 vec4 shading(vec3 LightPos_ec, vec3 vPosition_ec, vec3 vNormal_ec)
 {
     vec3 N = normalize(vNormal_ec);
@@ -45,6 +58,7 @@ vec4 shading(vec3 LightPos_ec, vec3 vPosition_ec, vec3 vNormal_ec)
     vec3 ambient = light.ambient * material.ambient;
     vec3 diffuse = light.diffuse * (material.diffuse * cos_theta);
     vec3 specular = light.specular * material.specular * pow(cos_alpha, material.shininess);
+    float shadow = shadow_calc(fPosition);
     vec3 I = ambient + fatt * (diffuse + specular);
     return vec4(I, 0);
 }

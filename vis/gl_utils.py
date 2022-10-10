@@ -108,9 +108,14 @@ def init_glfw(width=1920, height=1080):
     glfw.make_context_current(window)
     return window
 
-def compile_shader():
-    program = OpenGL.GL.shaders.compileProgram(OpenGL.GL.shaders.compileShader(get_shader("shader.vert"), GL_VERTEX_SHADER),
-                                              OpenGL.GL.shaders.compileShader(get_shader("shader.frag"), GL_FRAGMENT_SHADER))
+def compile_shader(vertex_shader, fragment_shader, geometry_shader=None):
+    shader_list = []
+    shader_list.append(OpenGL.GL.shaders.compileShader(get_shader(vertex_shader), GL_VERTEX_SHADER))
+    shader_list.append(OpenGL.GL.shaders.compileShader(get_shader(fragment_shader), GL_FRAGMENT_SHADER))
+    if geometry_shader != None:
+        shader_list.append(OpenGL.GL.shaders.compileShader(get_shader(geometry_shader), GL_GEOMETRY_SHADER))
+
+    program = OpenGL.GL.shaders.compileProgram(*shader_list)
     
     glUseProgram(program)
     return program

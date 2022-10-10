@@ -1,10 +1,16 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .base_model import MLP, PhaseMLP
+from .mlp import MLP, PhaseMLP
+
+class PLU(nn.Module):
+    def __init__(self, alpha=0.1, c=1.0):
+        super(PLU, self).__init__()
+        self.alpha = alpha
+        self.c = c
     
-def PLU(x, alpha=0.1, c=1.0):
-    return torch.max(alpha * (x + c) - c, torch.min(alpha * (x - c) + c, x))
+    def forward(self, x):
+        return torch.max(self.alpha * (x + self.c) - self.c, torch.min(self.alpha * (x - self.c) + self.c, x))
 
 class RMIB(nn.Module):
     def __init__(self,
@@ -141,7 +147,7 @@ class Discriminator(nn.Module):
         self.hidden_dims = hidden_dims
         self.output_dim = output_dim
 
-        self.encoder = MLP(input_dim, hidden_dims, output_dim, activation=F.relu, activation_at_last=False)
+        self.encoder = MLP(input_dim, hidden_dims, output_dim, activation=nn.ReLU(), activation_at_last=False)
 
     def forward(self, x):
         return self.encoder(x).squeeze(-1)

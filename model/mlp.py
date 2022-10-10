@@ -4,23 +4,23 @@ import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dims, output_dim, activation=F.leaky_relu, activation_at_last=False):
+    def __init__(self, input_dim, hidden_dims, output_dim, activation=nn.ReLU(), activation_at_last=False):
         super(MLP, self).__init__()
         self.activation = activation
         self.activation_at_last = activation_at_last
 
-        self.layers = nn.ModuleList()
+        layers = []
         for h_dim in hidden_dims:
-            self.layers.append(nn.Linear(input_dim, h_dim))
+            layers.append(nn.Linear(input_dim, h_dim))
+            layers.append(activation)
             input_dim = h_dim
-        self.layers.append(nn.Linear(input_dim, output_dim))
+        layers.append(nn.Linear(input_dim, output_dim))
+        if activation_at_last:
+            layers.append(activation)
+        self.layers = nn.Sequential(*layers)
     
     def forward(self, x):
-        for i in range(len(self.layers)):
-            x = self.layers[i](x)
-            if i != len(self.layers) - 1 or self.activation_at_last:
-                x = self.activation(x)
-        return x
+        return self.layers(x)
 
 class PhaseMLP(nn.Module):
     def __init__(self, input_dim, hidden_dims, output_dim, activation=F.elu, activation_at_last=False):

@@ -7,7 +7,7 @@ import random
 
 from data.dataset import MotionDataset
 from model.rmib import RMIB, Discriminator
-import data.torch_quat as quat
+import data.torch_utils as quat
 
 # training parameters
 epochs = 100
@@ -43,15 +43,13 @@ if __name__ == "__main__":
     global_pos = train_dset.extract_features("global_pos")
     parents = train_dset.extract_features("parents")
     offset = train_dset.extract_features("offset").reshape(local_quat.shape[0], local_quat.shape[1], -1, 3)
-    print(quat.quat_to_6d(local_quat.reshape(local_quat.shape[0], local_quat.shape[1], -1, 4)).shape)
-    exit()
 
     # data augmentation (rotate according to the 10th frame)
     local_quat = local_quat.reshape(local_quat.shape[0], local_quat.shape[1], -1, 4)
     global_vel_root = global_vel_root.reshape(global_vel_root.shape[0], global_vel_root.shape[1], -1, 3)
     global_pos = global_pos.reshape(global_pos.shape[0], global_pos.shape[1], -1, 3)
 
-    delta_quat = quat.delta_rotate_at_frame(local_quat, 10)
+    delta_quat = quat.delta_rotate_at_frame(local_quat, 9)
     
     local_quat[..., 0:1, :] = quat.quat_mul(delta_quat, local_quat[..., 0:1, :])
     global_vel_root = quat.quat_mul_vec(delta_quat, global_vel_root)

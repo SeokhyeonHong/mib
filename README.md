@@ -38,7 +38,7 @@ train_data = train_dset.extract_features("local_quat")
 
 For position, velocity, and rotation features, you can get root-only or without root features by putting `_root` or `_noroot` after the feature names respectively. (e.g. `local_quat_root`, `global_vel_noroot`)
 
-We also provide phase-functioned encoders and decoders through `PhaseMLP` in [here](model/base_model.py), which are originally from the paper [Phase-Functioned Neural Networks for Character Control](https://dl.acm.org/doi/abs/10.1145/3072959.3073663). (`PhaseRTN` and `PhaseRMIB` use phase-functioned MLPs for their encoders and decoders.)
+We also provide phase-functioned encoders and decoders through `PhaseMLP` in [here](model/mlp.py), which are originally from the paper [Phase-Functioned Neural Networks for Character Control](https://dl.acm.org/doi/abs/10.1145/3072959.3073663). (`PhaseRTN` and `PhaseRMIB` use phase-functioned MLPs for their encoders and decoders.)
 
 To use labelled phase features, you should add `.phase` files within the same directory of `.bvh` files.
 

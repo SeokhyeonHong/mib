@@ -44,6 +44,7 @@ class Primitives():
 
 class Cube(Primitives):
     def __init__(self, program, width, height, depth):
+        self.program = program
         self.width, self.height, self.depth = width, height, depth
         self.positions, self.indices, self.normals = self.get_vertices()
         self.colors = get_color_by_pos(self.positions)
@@ -88,6 +89,8 @@ class Cube(Primitives):
         return positions, indices, normals
 
     def draw(self, M, V, P):
+        glUseProgram(self.program)
+
         glBindVertexArray(self.vao)
         glEnable(GL_POLYGON_OFFSET_FILL)
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
@@ -102,6 +105,7 @@ class Cube(Primitives):
 
 class Sphere(Primitives):
     def __init__(self, program, radius, subh, suba):
+        self.program = program
         self.radius, self.subh, self.suba = radius, subh, suba
         self.positions, self.indices, self.normals = self.get_vertices()
         self.colors = get_color_by_pos(self.positions)
@@ -154,6 +158,8 @@ class Sphere(Primitives):
         return positions, indices, normals
 
     def draw(self, M, V, P):
+        glUseProgram(self.program)
+
         glBindVertexArray(self.vao)
         
         glEnable(GL_POLYGON_OFFSET_FILL)
@@ -167,69 +173,9 @@ class Sphere(Primitives):
 
         glDisable(GL_POLYGON_OFFSET_FILL)
 
-class Hemisphere(Primitives):
-    def __init__(self, program, radius, subh, suba):
-        self.radius, self.subh, self.suba = radius, subh, suba
-        self.positions, self.indices, self.normals = self.get_vertices()
-        self.colors = get_color_by_pos(self.positions)
-        super().__init__(program, self.positions, self.colors, self.normals)
-
-        self.element_buff = glGenBuffers(1)
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.element_buff)
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, self.indices.nbytes, self.indices, GL_STATIC_DRAW)
-    
-    def get_vertices(self):
-        y, rst = [], []
-        cp, sp = [], []
-        for i in range(self.subh+1):
-            theta = i * np.pi / self.subh / 2
-            y.append(self.radius * np.cos(theta))
-            rst.append(self.radius * np.sin(theta))
-        for i in range(self.suba + 1):
-            phi = 2 * np.pi * i / self.suba
-            cp.append(np.cos(phi))
-            sp.append(np.sin(phi))
-
-        positions, normals = [], []
-        for i in range(self.subh):
-            for j in range(self.suba):
-                vx0, vy0, vz0 = sp[j] * rst[i], y[i], cp[j] * rst[i]
-                vx1, vy1, vz1 = sp[j] * rst[i+1], y[i+1], cp[j] * rst[i+1]
-                vx2, vy2, vz2 = sp[j+1] * rst[i], y[i], cp[j+1] * rst[i]
-                vx3, vy3, vz3 = sp[j+1] * rst[i+1], y[i+1], cp[j+1] * rst[i+1]
-
-                positions.append([vx0, vy0, vz0])
-                positions.append([vx1, vy1, vz1])
-                positions.append([vx3, vy3, vz3])
-
-                normals.append([vx0 / self.radius, vy0 / self.radius, vz0 / self.radius])
-                normals.append([vx1 / self.radius, vy1 / self.radius, vz1 / self.radius])
-                normals.append([vx3 / self.radius, vy3 / self.radius, vz3 / self.radius])
-
-                if i > 0:
-                    positions.append([vx3, vy3, vz3])
-                    positions.append([vx2, vy2, vz2])
-                    positions.append([vx0, vy0, vz0])
-                    
-                    normals.append([vx3 / self.radius, vy3 / self.radius, vz3 / self.radius])
-                    normals.append([vx2 / self.radius, vy2 / self.radius, vz2 / self.radius])
-                    normals.append([vx0 / self.radius, vy0 / self.radius, vz0 / self.radius])
-        
-        positions = np.array(positions, dtype=np.float32).flatten()
-        indices = np.array([i for i in range(len(positions) // 3)], dtype=np.uint32)
-        normals = np.array(normals, dtype=np.float32).flatten()
-        return positions, indices, normals
-
-    def draw(self, M, V, P):
-        glBindVertexArray(self.vao)
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.element_buff)
-        glUniformMatrix4fv(1, 1, GL_FALSE, glm.value_ptr(M))
-        glUniformMatrix4fv(2, 1, GL_FALSE, glm.value_ptr(V))
-        glUniformMatrix4fv(3, 1, GL_FALSE, glm.value_ptr(P))
-        glDrawElements(GL_TRIANGLES, len(self.indices), GL_UNSIGNED_INT, None)
-
 class Cylinder(Primitives):
     def __init__(self, program, radius, height, n, material=None):
+        self.program = program
         self.radius, self.height, self.n = radius, height, n
         self.positions, self.indices, self.normals = self.get_vertices()
         self.colors = get_color_by_pos(self.positions)
@@ -284,6 +230,8 @@ class Cylinder(Primitives):
         return positions, (top_indices, side_indices, bottom_indices), normals
 
     def draw(self, M, V, P):
+        glUseProgram(self.program)
+
         if self.material is not None:
             self.material.update()
         glBindVertexArray(self.vao)
@@ -303,6 +251,7 @@ class Cylinder(Primitives):
 
 class Grid(Primitives):
     def __init__(self, program, width, height, m, n):
+        self.program = program
         self.width, self.height, self.m, self.n = width, height, m, n
         self.positions, self.indices, self.normals = self.get_vertices()
         self.colors = get_color_by_pos(self.positions)
@@ -335,6 +284,8 @@ class Grid(Primitives):
         return positions, indices, normals
 
     def draw(self, V, P):
+        glUseProgram(self.program)
+
         glBindVertexArray(self.vao)
         glLineWidth(0.5)
 
@@ -346,6 +297,7 @@ class Grid(Primitives):
 
 class Checkerboard(Primitives):
     def __init__(self, program, width, height, m, n):
+        self.program = program
         self.width, self.height, self.m, self.n = width, height, m, n
         self.positions, self.indices, self.normals, self.colors = self.get_vertices()
         super().__init__(program, self.positions, self.colors, self.normals)
@@ -382,6 +334,8 @@ class Checkerboard(Primitives):
         return positions, indices, normals, colors
 
     def draw(self, V, P):
+        glUseProgram(self.program)
+
         glBindVertexArray(self.vao)
         glLineWidth(0.5)
 

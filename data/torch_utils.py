@@ -55,7 +55,7 @@ def quat_fk(lq, gp_root, offset, parents):
 def delta_rotate_at_frame(lq, frame):
     assert lq.shape[-1] == 4
     
-    key_q = lq[:, frame-1:frame, 0:1, :]
+    key_q = lq[:, frame:frame+1, 0:1, :]
     forward = torch.tensor([1, 0, 1], dtype=torch.float32, device=lq.device)[None, None, None, :]\
             * quat_mul_vec(key_q, torch.tensor([0, 1, 0], dtype=torch.float32, device=lq.device)[None, None, None, :])
     forward = normalize(forward)
@@ -101,4 +101,15 @@ def quat_to_6d(q):
     r0 = torch.cat([2*(q0*q0 + q1*q1) - 1, 2*(q1*q2 - q0*q3), 2*(q1*q3 + q0*q2)], dim=-1)
     r1 = torch.cat([2*(q1*q2 + q0*q3), 2*(q0*q0 + q2*q2) - 1, 2*(q2*q3 - q0*q1)], dim=-1)
     res = torch.cat([r0, r1], dim=-1)
+    return res
+
+def rotmat_fk(rotmat, gp_root, offset, parents):
+    assert rotmat.shape[-1] == 3 and rotmat.shape[-2] == 3 and gp_root.shape[-1] == 3 and offset.shape[-1] == 3
+
+    gp, gr = [gp_root], [rotmat[..., :1, :, :]]
+    for i in range(1, len(parents)):
+        gp.append(torch.matmul(gr[parents[i]], offset[..., i:i+1, :, None]).squeeze(-1) + gp[parents[i]])
+        gr.append(torch.matmul(gr[parents[i]], rotmat[..., i:i+1, :, :]))
+
+    res = torch.cat(gr, dim=-3), torch.cat(gp, dim=-2)
     return res

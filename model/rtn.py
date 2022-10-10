@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .base_model import MLP, PhaseMLP
+from model.mlp import MLP, PhaseMLP
 
 class RTN(nn.Module):
     def __init__(self,
@@ -23,11 +23,11 @@ class RTN(nn.Module):
         super(RTN, self).__init__()
         self.dof = dof
 
-        self.h_initializer = MLP(dof, hidden_dims["hidden_init"], output_dims["hidden_init"], activation_at_last=True)
-        self.c_initializer = MLP(dof, hidden_dims["hidden_init"], output_dims["hidden_init"], activation_at_last=True)
-        self.frame_encoder = MLP(dof, hidden_dims["frame_encoder"], output_dims["frame_encoder"], activation_at_last=True)
-        self.offset_encoder = MLP(dof, hidden_dims["offset_encoder"], output_dims["offset_encoder"], activation_at_last=True)
-        self.target_encoder = MLP(dof, hidden_dims["target_encoder"], output_dims["target_encoder"], activation_at_last=True)
+        self.h_initializer = MLP(dof, hidden_dims["hidden_init"], output_dims["hidden_init"], activation=nn.LeakyReLU(), activation_at_last=True)
+        self.c_initializer = MLP(dof, hidden_dims["hidden_init"], output_dims["hidden_init"], activation=nn.LeakyReLU(), activation_at_last=True)
+        self.frame_encoder = MLP(dof, hidden_dims["frame_encoder"], output_dims["frame_encoder"], activation=nn.LeakyReLU(), activation_at_last=True)
+        self.offset_encoder = MLP(dof, hidden_dims["offset_encoder"], output_dims["offset_encoder"], activation=nn.LeakyReLU(), activation_at_last=True)
+        self.target_encoder = MLP(dof, hidden_dims["target_encoder"], output_dims["target_encoder"], activation=nn.LeakyReLU(), activation_at_last=True)
         self.lstm = nn.LSTM(input_size=output_dims["frame_encoder"] + output_dims["offset_encoder"] + output_dims["target_encoder"], hidden_size=hidden_dims["lstm"], num_layers=1, batch_first=True)
 
         self.decoder = MLP(input_dim=hidden_dims["lstm"], hidden_dims=hidden_dims["decoder"], output_dim=dof)

@@ -7,7 +7,7 @@ import random
 
 from data.dataset import MotionDataset
 from model.rmib import PhaseRMIB, Discriminator
-import data.torch_quat as quat
+import data.torch_utils as T
 
 # training parameters
 epochs = 100
@@ -50,11 +50,11 @@ if __name__ == "__main__":
     global_vel_root = global_vel_root.reshape(global_vel_root.shape[0], global_vel_root.shape[1], -1, 3)
     global_pos = global_pos.reshape(global_pos.shape[0], global_pos.shape[1], -1, 3)
 
-    delta_quat = quat.delta_rotate_at_frame(local_quat, 10)
+    delta_quat = T.delta_rotate_at_frame(local_quat, 10)
     
-    local_quat[..., 0:1, :] = quat.quat_mul(delta_quat, local_quat[..., 0:1, :])
-    global_vel_root = quat.quat_mul_vec(delta_quat, global_vel_root)
-    global_pos = quat.quat_mul_vec(delta_quat, global_pos)
+    local_quat[..., 0:1, :] = T.quat_mul(delta_quat, local_quat[..., 0:1, :])
+    global_vel_root = T.quat_mul_vec(delta_quat, global_vel_root)
+    global_pos = T.quat_mul_vec(delta_quat, global_pos)
     
     local_quat = local_quat.reshape(local_quat.shape[0], local_quat.shape[1], -1)
     global_vel_root = global_vel_root.reshape(global_vel_root.shape[0], global_vel_root.shape[1], -1)
@@ -127,10 +127,10 @@ if __name__ == "__main__":
             # solve FK
             gp = global_pos[idx].to(device)
             gpr_preds = gp[:, 0:1, :3] + torch.cumsum(gvr_preds, dim=1)
-            _, gp_preds = quat.quat_fk(quat.quat_normalize(lq_preds.reshape(*lq_preds.shape[:2], -1, 4)),
-                                              gpr_preds.reshape(*gpr_preds.shape[:2], -1, 3),
-                                              offset[idx][:, 1:target_frame+1].to(device),
-                                              parents)
+            _, gp_preds = T.quat_fk(T.quat_normalize(lq_preds.reshape(*lq_preds.shape[:2], -1, 4)),
+                                    gpr_preds.reshape(*gpr_preds.shape[:2], -1, 3),
+                                    offset[idx][:, 1:target_frame+1].to(device),
+                                    parents)
             gp_preds = gp_preds.reshape(*gp_preds.shape[:2], -1)
 
             # reconstruction loss (local quaternion, global root velocity, global position, contacts)

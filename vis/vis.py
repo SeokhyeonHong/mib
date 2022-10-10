@@ -4,9 +4,8 @@ import glm
 import numpy as np
 import imageio
 
-from .utils import *
-from .gl_utils import *
-from .primitives import *
+from vis.gl_utils import *
+from vis.primitives import *
 
 # global variables
 
@@ -23,7 +22,7 @@ def display(anim, parents, gt=None, fps=30, save_gif=False, gif_name="animation.
     if window is None:
         return
 
-    program = compile_shader()
+    program = compile_shader("phong.vs", "phong.fs")
 
     camera = Camera()
     width, height = glfw.get_window_size(window)[0], glfw.get_window_size(window)[1]
@@ -95,7 +94,7 @@ def display(anim, parents, gt=None, fps=30, save_gif=False, gif_name="animation.
             if gt is not None:
                 render_pose(gt[frame], gt_bones, parents)
 
-            checkerboard.draw(V, P)
+            # checkerboard.draw(V, P)
 
             frame += 1
             
@@ -122,7 +121,7 @@ def display_with_keys(anim, parents, key_anim, key_indices, gt=None, fps=30, sav
     if window is None:
         return
 
-    program = compile_shader()
+    program = compile_shader("phong.vs", "phong.fs")
 
     camera = Camera()
     width, height = glfw.get_window_size(window)[0], glfw.get_window_size(window)[1]
