@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -73,3 +74,17 @@ class PhaseMLP(nn.Module):
         idx_3 = torch.remainder(idx_1 + 2, 4)
         w = torch.fmod(w, 1)
         return w.view(-1, 1, 1), idx_0.view(-1), idx_1.view(-1), idx_2.view(-1), idx_3.view(-1)
+
+class MultiLinear(nn.Module):
+    def __init__(self, num_layers, in_features, out_features, bias=True):
+        super(MultiLinear, self).__init__()
+        
+        self.weight = nn.Parameter(torch.Tensor(num_layers, in_features, out_features))
+        self.bias = nn.Parameter(torch.Tensor(num_layers, 1, out_features)) if bias == True else None
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias != None:
+            nn.init.zeros_(self.bias)
+
+    def forward(self, x):
+        x = torch.matmul(x, self.weight)
+        return x if self.bias == None else x + self.bias

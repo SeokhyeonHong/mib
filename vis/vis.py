@@ -94,7 +94,7 @@ def display(anim, parents, gt=None, fps=30, save_gif=False, gif_name="animation.
             if gt is not None:
                 render_pose(gt[frame], gt_bones, parents)
 
-            # checkerboard.draw(V, P)
+            checkerboard.draw(V, P)
 
             frame += 1
             
